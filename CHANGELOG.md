@@ -1,6 +1,7 @@
 # v4.3.0
 * Changed: Remove tools: Reindex, Backup, Restore
 * Changed: Remove FetchHintsBuilder.parse
+* Changed: Hadoop version to 3.1.1
 * Fixed: GeoPoint.calculateCenter
 
 # v4.2.0
