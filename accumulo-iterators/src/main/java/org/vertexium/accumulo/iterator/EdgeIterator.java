@@ -30,12 +30,12 @@ public class EdgeIterator extends ElementIterator<EdgeElementData> {
 
     @Override
     protected boolean processColumn(Key key, Value value, Text columnFamily, Text columnQualifier) {
-        if (CF_IN_VERTEX.compareTo(columnFamily) == 0) {
+        if (CF_IN_VERTEX.equals(columnFamily)) {
             getElementData().inVertexId = key.getColumnQualifier();
             return true;
         }
 
-        if (CF_OUT_VERTEX.compareTo(columnFamily) == 0) {
+        if (CF_OUT_VERTEX.equals(columnFamily)) {
             getElementData().outVertexId = key.getColumnQualifier();
             return true;
         }
@@ -56,10 +56,15 @@ public class EdgeIterator extends ElementIterator<EdgeElementData> {
 
     @Override
     public SortedKeyValueIterator<Key, Value> deepCopy(IteratorEnvironment env) {
-        if (sourceIter != null) {
-            return new EdgeIterator(sourceIter.deepCopy(env), getFetchHints());
+        if (getSourceIterator() != null) {
+            return new EdgeIterator(getSourceIterator().deepCopy(env), getFetchHints());
         }
         return new EdgeIterator(getFetchHints());
+    }
+
+    @Override
+    protected String getDescription() {
+        return "This iterator encapsulates an entire Edge into a single Key/Value pair.";
     }
 
     @Override

@@ -1,12 +1,11 @@
 package org.vertexium.accumulo.iterator;
 
 import org.apache.accumulo.core.client.IteratorSetting;
-import org.apache.accumulo.core.data.Key;
-import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.data.*;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
+import org.apache.accumulo.core.iterators.OptionDescriber;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iterators.user.RowDeletingIterator;
-import org.apache.accumulo.core.iterators.user.RowEncodingIterator;
 import org.apache.hadoop.io.Text;
 import org.vertexium.accumulo.iterator.model.*;
 
@@ -14,7 +13,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.regex.Pattern;
 
-public abstract class ElementIterator<T extends ElementData> extends RowEncodingIterator {
+public abstract class ElementIterator<T extends ElementData> implements SortedKeyValueIterator<Key, Value>, OptionDescriber {
     public static final String CF_PROPERTY_STRING = "PROP";
     public static final Text CF_PROPERTY = new Text(CF_PROPERTY_STRING);
     public static final String CF_PROPERTY_HIDDEN_STRING = "PROPH";
@@ -57,52 +56,117 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
 
     private static final String RECORD_SEPARATOR = "\u001f";
     private static final Pattern RECORD_SEPARATOR_PATTERN = Pattern.compile(Pattern.quote(RECORD_SEPARATOR));
+    private SortedKeyValueIterator<Key, Value> sourceIterator;
     private IteratorFetchHints fetchHints;
     private T elementData;
+    private Key topKey;
+    private Value topValue;
 
     public ElementIterator(SortedKeyValueIterator<Key, Value> source, IteratorFetchHints fetchHints) {
-        this.sourceIter = source;
+        this.sourceIterator = source;
         this.fetchHints = fetchHints;
         this.elementData = createElementData();
     }
 
     @Override
-    public SortedMap<Key, Value> rowDecoder(Key rowKey, Value rowValue) throws IOException {
-        throw new IOException("Not implemented");
+    public boolean hasTop() {
+        return topKey != null;
     }
 
     @Override
-    protected final boolean filter(Text currentRow, List<Key> keys, List<Value> values) {
-        return populateElementData(keys, values);
+    public void next() throws IOException {
+        topKey = null;
+        topValue = null;
+        loadNext();
     }
 
-    protected boolean populateElementData(List<Key> keys, List<Value> values) {
+    @Override
+    public Key getTopKey() {
+        return topKey;
+    }
+
+    @Override
+    public Value getTopValue() {
+        return topValue;
+    }
+
+    @Override
+    public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive) throws IOException {
+        topKey = null;
+        topValue = null;
+
+        Key sk = range.getStartKey();
+
+        if (sk != null
+                && sk.getColumnFamilyData().length() == 0
+                && sk.getColumnQualifierData().length() == 0
+                && sk.getColumnVisibilityData().length() == 0
+                && sk.getTimestamp() == Long.MAX_VALUE
+                && !range.isStartKeyInclusive()) {
+            // assuming that we are seeking using a key previously returned by this iterator
+            // therefore go to the next row
+            Key followingRowKey = sk.followingKey(PartialKey.ROW);
+            if (range.getEndKey() != null && followingRowKey.compareTo(range.getEndKey()) > 0) {
+                return;
+            }
+
+            range = new Range(
+                    sk.followingKey(PartialKey.ROW),
+                    true,
+                    range.getEndKey(),
+                    range.isEndKeyInclusive()
+            );
+        }
+
+        sourceIterator.seek(range, columnFamilies, inclusive);
+        loadNext();
+    }
+
+    private void loadNext() throws IOException {
+        if (topKey != null) {
+            return;
+        }
+        while (sourceIterator.hasTop()) {
+            Text currentRow = loadElement();
+            if (currentRow != null) {
+                topKey = new Key(currentRow);
+                topValue = elementData.encode(fetchHints);
+                break;
+            }
+        }
+    }
+
+    protected Text loadElement() throws IOException {
         this.elementData.clear();
 
+        boolean deletedOrHidden = false;
         Text columnFamily = new Text();
-        for (int i = 0; i < keys.size(); i++) {
-            Key key = keys.get(i);
-            Value value = values.get(i);
-            key.getColumnFamily(columnFamily); // avoid Text allocation by reusing columnFamily
-            if (!processKeyValue(key, columnFamily, value)) {
-                return false;
+        Text currentRow = new Text(sourceIterator.getTopKey().getRow());
+        while (sourceIterator.hasTop() && sourceIterator.getTopKey().getRow().equals(currentRow)) {
+            if (!deletedOrHidden) {
+                Key sourceTopKey = new Key(sourceIterator.getTopKey());
+                Value sourceTopValue = new Value(sourceIterator.getTopValue());
+                sourceTopKey.getColumnFamily(columnFamily);
+                if (!processKeyValue(sourceTopKey, columnFamily, sourceTopValue)) {
+                    deletedOrHidden = true;
+                }
             }
+            sourceIterator.next();
+        }
+
+        if (deletedOrHidden) {
+            return null;
         }
 
         if (this.elementData.visibility == null) {
-            return false;
+            return null;
         }
 
         if (this.elementData.softDeleteTimestamp >= this.elementData.timestamp) {
-            return false;
+            return null;
         }
 
-        return true;
-    }
-
-    @Override
-    public final Value rowEncoder(List<Key> keys, List<Value> values) throws IOException {
-        return elementData.encode(fetchHints);
+        return currentRow;
     }
 
     private boolean processKeyValue(Key key, Text columnFamily, Value value) {
@@ -264,7 +328,7 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
 
     @Override
     public void init(SortedKeyValueIterator<Key, Value> source, Map<String, String> options, IteratorEnvironment env) throws IOException {
-        super.init(source, options, env);
+        sourceIterator = source;
         fetchHints = new IteratorFetchHints(
                 Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTIES)),
                 parseSet(options.get(SETTING_FETCH_HINTS_PROPERTY_NAMES_TO_INCLUDE)),
@@ -279,6 +343,30 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
                 Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_EXTENDED_DATA_TABLE_NAMES))
         );
         elementData = createElementData();
+    }
+
+    @Override
+    public IteratorOptions describeOptions() {
+        Map<String, String> namedOptions = new HashMap<>();
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTIES, "true to include all properties");
+        namedOptions.put(SETTING_FETCH_HINTS_PROPERTY_NAMES_TO_INCLUDE, "Set of property names to include separated by \\u001f");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTY_METADATA, "true to include all property metadata");
+        namedOptions.put(SETTING_FETCH_HINTS_METADATA_KEYS_TO_INCLUDE, "Set of metadata keys to include separated by \\u001f");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_HIDDEN, "true to include hidden");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_ALL_EDGE_REFS, "true to include all edge refs");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_OUT_EDGE_REFS, "true to include out edge refs");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_IN_EDGE_REFS, "true to include in edge refs");
+        namedOptions.put(SETTING_FETCH_HINTS_EDGE_LABELS_OF_EDGE_REFS_TO_INCLUDE, "Set of edge labels to include separated by \\u001f");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_EDGE_LABELS_AND_COUNTS, "true to include edge labels and counts");
+        namedOptions.put(SETTING_FETCH_HINTS_INCLUDE_EXTENDED_DATA_TABLE_NAMES, "true to include extended data table name");
+        return new IteratorOptions(getClass().getSimpleName(), getDescription(), namedOptions, null);
+    }
+
+    protected abstract String getDescription();
+
+    @Override
+    public boolean validateOptions(Map<String, String> options) {
+        return true;
     }
 
     protected abstract T createElementData();
@@ -332,6 +420,34 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
 
     public IteratorFetchHints getFetchHints() {
         return fetchHints;
+    }
+
+    public SortedKeyValueIterator<Key, Value> getSourceIterator() {
+        return sourceIterator;
+    }
+
+    protected boolean populateElementData(List<Key> keys, List<Value> values) {
+        this.elementData.clear();
+
+        Text columnFamily = new Text();
+        for (int i = 0; i < keys.size(); i++) {
+            Key key = keys.get(i);
+            Value value = values.get(i);
+            key.getColumnFamily(columnFamily); // avoid Text allocation by reusing columnFamily
+            if (!processKeyValue(key, columnFamily, value)) {
+                return false;
+            }
+        }
+
+        if (this.elementData.visibility == null) {
+            return false;
+        }
+
+        if (this.elementData.softDeleteTimestamp >= this.elementData.timestamp) {
+            return false;
+        }
+
+        return true;
     }
 
     public T createElementDataFromRows(Iterator<Map.Entry<Key, Value>> rows) {

@@ -10,6 +10,7 @@ import org.vertexium.accumulo.iterator.model.IteratorFetchHints;
 import org.vertexium.accumulo.iterator.model.SoftDeleteEdgeInfo;
 import org.vertexium.accumulo.iterator.model.VertexElementData;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
@@ -39,6 +40,15 @@ public class VertexIterator extends ElementIterator<VertexElementData> {
 
     public VertexIterator(SortedKeyValueIterator<Key, Value> source, IteratorFetchHints fetchHints) {
         super(source, fetchHints);
+    }
+
+    @Override
+    protected Text loadElement() throws IOException {
+        Text ret = super.loadElement();
+        if (ret != null) {
+            removeHiddenAndSoftDeletes();
+        }
+        return ret;
     }
 
     @Override
@@ -149,10 +159,15 @@ public class VertexIterator extends ElementIterator<VertexElementData> {
 
     @Override
     public SortedKeyValueIterator<Key, Value> deepCopy(IteratorEnvironment env) {
-        if (sourceIter != null) {
-            return new VertexIterator(sourceIter.deepCopy(env), getFetchHints());
+        if (getSourceIterator() != null) {
+            return new VertexIterator(getSourceIterator().deepCopy(env), getFetchHints());
         }
         return new VertexIterator(getFetchHints());
+    }
+
+    @Override
+    protected String getDescription() {
+        return "This iterator encapsulates an entire Vertex into a single Key/Value pair.";
     }
 
     @Override

@@ -808,6 +808,7 @@ public abstract class GraphTestBase {
         graph.softDeleteVertex("v1", AUTHORIZATIONS_A);
         graph.flush();
         assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A)));
+        assertEquals(0, count(graph.getEdges(AUTHORIZATIONS_A)));
         assertEquals(0, count(graph.query(AUTHORIZATIONS_A).has("name1", "value1").vertices()));
 
         v2 = graph.getVertex("v2", AUTHORIZATIONS_A);
