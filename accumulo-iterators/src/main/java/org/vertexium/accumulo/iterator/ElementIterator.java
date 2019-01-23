@@ -43,6 +43,18 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
     public static final String METADATA_COLUMN_QUALIFIER_STRING = "";
     public static final Text METADATA_COLUMN_QUALIFIER = new Text(METADATA_COLUMN_QUALIFIER_STRING);
     private static final String SETTING_FETCH_HINTS_PREFIX = "fetchHints.";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTIES = SETTING_FETCH_HINTS_PREFIX + "includeAllProperties";
+    public static final String SETTING_FETCH_HINTS_PROPERTY_NAMES_TO_INCLUDE = SETTING_FETCH_HINTS_PREFIX + "propertyNamesToInclude";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTY_METADATA = SETTING_FETCH_HINTS_PREFIX + "includeAllPropertyMetadata";
+    public static final String SETTING_FETCH_HINTS_METADATA_KEYS_TO_INCLUDE = SETTING_FETCH_HINTS_PREFIX + "metadataKeysToInclude";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_HIDDEN = SETTING_FETCH_HINTS_PREFIX + "includeHidden";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_ALL_EDGE_REFS = SETTING_FETCH_HINTS_PREFIX + "includeAllEdgeRefs";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_OUT_EDGE_REFS = SETTING_FETCH_HINTS_PREFIX + "includeOutEdgeRefs";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_IN_EDGE_REFS = SETTING_FETCH_HINTS_PREFIX + "includeInEdgeRefs";
+    public static final String SETTING_FETCH_HINTS_EDGE_LABELS_OF_EDGE_REFS_TO_INCLUDE = SETTING_FETCH_HINTS_PREFIX + "edgeLabelsOfEdgeRefsToInclude";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_EDGE_LABELS_AND_COUNTS = SETTING_FETCH_HINTS_PREFIX + "includeEdgeLabelsAndCounts";
+    public static final String SETTING_FETCH_HINTS_INCLUDE_EXTENDED_DATA_TABLE_NAMES = SETTING_FETCH_HINTS_PREFIX + "includeExtendedDataTableNames";
+
     private static final String RECORD_SEPARATOR = "\u001f";
     private static final Pattern RECORD_SEPARATOR_PATTERN = Pattern.compile(Pattern.quote(RECORD_SEPARATOR));
     private IteratorFetchHints fetchHints;
@@ -254,17 +266,17 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
     public void init(SortedKeyValueIterator<Key, Value> source, Map<String, String> options, IteratorEnvironment env) throws IOException {
         super.init(source, options, env);
         fetchHints = new IteratorFetchHints(
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeAllProperties")),
-                parseSet(options.get(SETTING_FETCH_HINTS_PREFIX + "propertyNamesToInclude")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeAllPropertyMetadata")),
-                parseSet(options.get(SETTING_FETCH_HINTS_PREFIX + "metadataKeysToInclude")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeHidden")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeAllEdgeRefs")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeOutEdgeRefs")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeInEdgeRefs")),
-                parseSet(options.get(SETTING_FETCH_HINTS_PREFIX + "edgeLabelsOfEdgeRefsToInclude")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeEdgeLabelsAndCounts")),
-                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_PREFIX + "includeExtendedDataTableNames"))
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTIES)),
+                parseSet(options.get(SETTING_FETCH_HINTS_PROPERTY_NAMES_TO_INCLUDE)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTY_METADATA)),
+                parseSet(options.get(SETTING_FETCH_HINTS_METADATA_KEYS_TO_INCLUDE)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_HIDDEN)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_ALL_EDGE_REFS)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_OUT_EDGE_REFS)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_IN_EDGE_REFS)),
+                parseSet(options.get(SETTING_FETCH_HINTS_EDGE_LABELS_OF_EDGE_REFS_TO_INCLUDE)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_EDGE_LABELS_AND_COUNTS)),
+                Boolean.parseBoolean(options.get(SETTING_FETCH_HINTS_INCLUDE_EXTENDED_DATA_TABLE_NAMES))
         );
         elementData = createElementData();
     }
@@ -272,17 +284,17 @@ public abstract class ElementIterator<T extends ElementData> extends RowEncoding
     protected abstract T createElementData();
 
     public static void setFetchHints(IteratorSetting iteratorSettings, IteratorFetchHints fetchHints) {
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeAllProperties", Boolean.toString(fetchHints.isIncludeAllProperties()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "propertyNamesToInclude", setToString(fetchHints.getPropertyNamesToInclude()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeAllPropertyMetadata", Boolean.toString(fetchHints.isIncludeAllPropertyMetadata()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "metadataKeysToInclude", setToString(fetchHints.getMetadataKeysToInclude()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeHidden", Boolean.toString(fetchHints.isIncludeHidden()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeAllEdgeRefs", Boolean.toString(fetchHints.isIncludeAllEdgeRefs()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeOutEdgeRefs", Boolean.toString(fetchHints.isIncludeOutEdgeRefs()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeInEdgeRefs", Boolean.toString(fetchHints.isIncludeInEdgeRefs()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "edgeLabelsOfEdgeRefsToInclude", setToString(fetchHints.getEdgeLabelsOfEdgeRefsToInclude()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeEdgeLabelsAndCounts", Boolean.toString(fetchHints.isIncludeEdgeLabelsAndCounts()));
-        addOption(iteratorSettings, SETTING_FETCH_HINTS_PREFIX + "includeExtendedDataTableNames", Boolean.toString(fetchHints.isIncludeExtendedDataTableNames()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTIES, Boolean.toString(fetchHints.isIncludeAllProperties()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_PROPERTY_NAMES_TO_INCLUDE, setToString(fetchHints.getPropertyNamesToInclude()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_ALL_PROPERTY_METADATA, Boolean.toString(fetchHints.isIncludeAllPropertyMetadata()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_METADATA_KEYS_TO_INCLUDE, setToString(fetchHints.getMetadataKeysToInclude()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_HIDDEN, Boolean.toString(fetchHints.isIncludeHidden()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_ALL_EDGE_REFS, Boolean.toString(fetchHints.isIncludeAllEdgeRefs()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_OUT_EDGE_REFS, Boolean.toString(fetchHints.isIncludeOutEdgeRefs()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_IN_EDGE_REFS, Boolean.toString(fetchHints.isIncludeInEdgeRefs()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_EDGE_LABELS_OF_EDGE_REFS_TO_INCLUDE, setToString(fetchHints.getEdgeLabelsOfEdgeRefsToInclude()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_EDGE_LABELS_AND_COUNTS, Boolean.toString(fetchHints.isIncludeEdgeLabelsAndCounts()));
+        addOption(iteratorSettings, SETTING_FETCH_HINTS_INCLUDE_EXTENDED_DATA_TABLE_NAMES, Boolean.toString(fetchHints.isIncludeExtendedDataTableNames()));
     }
 
     private static void addOption(IteratorSetting iteratorSettings, String key, String value) {
