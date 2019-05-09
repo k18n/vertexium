@@ -1,6 +1,7 @@
 package org.vertexium.search;
 
 import org.vertexium.*;
+import org.vertexium.mutation.ElementMutation;
 import org.vertexium.mutation.ExistingElementMutation;
 import org.vertexium.mutation.ExtendedDataMutation;
 import org.vertexium.query.*;
@@ -80,9 +81,9 @@ public interface SearchIndex {
 
     void deleteExtendedData(Graph graph, ExtendedDataRowId extendedDataRowId, Authorizations authorizations);
 
-    void deleteExtendedData(
+    <T extends Element> void deleteExtendedData(
         Graph graph,
-        Element element,
+        ElementMutation<T> element,
         String tableName,
         String row,
         String columnName,

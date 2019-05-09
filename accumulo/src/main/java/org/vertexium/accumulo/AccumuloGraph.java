@@ -832,7 +832,7 @@ public class AccumuloGraph extends GraphBaseWithSearchIndex implements Traceable
             edgeBuilder.getElementId(),
             edgeBuilder.getOutVertexId(),
             edgeBuilder.getInVertexId(),
-            edgeBuilder.getLabel(),
+            edgeBuilder.getEdgeLabel(),
             edgeBuilder.getNewEdgeLabel(),
             edgeBuilder.getVisibility(),
             edgeBuilder.getProperties(),

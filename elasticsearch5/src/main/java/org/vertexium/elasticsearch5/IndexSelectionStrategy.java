@@ -3,6 +3,7 @@ package org.vertexium.elasticsearch5;
 import org.vertexium.Element;
 import org.vertexium.ExtendedDataRowId;
 import org.vertexium.PropertyDefinition;
+import org.vertexium.mutation.ElementMutation;
 
 import java.util.EnumSet;
 
@@ -19,7 +20,12 @@ public interface IndexSelectionStrategy {
 
     String[] getIndicesToQuery(ElasticsearchSearchQueryBase query, EnumSet<ElasticsearchDocumentType> elementType);
 
-    String getExtendedDataIndexName(Elasticsearch5SearchIndex es, Element element, String tableName, String rowId);
+    <T extends Element> String getExtendedDataIndexName(
+        Elasticsearch5SearchIndex es,
+        ElementMutation<T> elementMutation,
+        String tableName,
+        String rowId
+    );
 
     String getExtendedDataIndexName(Elasticsearch5SearchIndex es, ExtendedDataRowId rowId);
 }

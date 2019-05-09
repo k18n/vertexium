@@ -20,7 +20,7 @@ public abstract class EdgeBuilderBase extends ElementBuilder<Edge> implements Ed
         return getElementId();
     }
 
-    public String getLabel() {
+    public String getEdgeLabel() {
         return label;
     }
 

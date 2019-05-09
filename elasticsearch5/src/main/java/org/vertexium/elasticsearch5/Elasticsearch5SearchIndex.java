@@ -48,6 +48,8 @@ import org.vertexium.Edge;
 import org.vertexium.*;
 import org.vertexium.elasticsearch5.utils.DefaultBulkProcessorListener;
 import org.vertexium.elasticsearch5.utils.FlushObjectQueue;
+import org.vertexium.mutation.EdgeMutation;
+import org.vertexium.mutation.ElementMutation;
 import org.vertexium.mutation.ExistingElementMutation;
 import org.vertexium.mutation.ExtendedDataMutation;
 import org.vertexium.property.StreamingPropertyValue;
@@ -314,31 +316,27 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     private void loadExistingMappingIntoIndexInfo(Graph graph, IndexInfo indexInfo, String indexName) {
-        try {
-            indexRefreshTracker.refresh(client, indexName);
-            GetMappingsResponse mapping = client.admin().indices().prepareGetMappings(indexName).get();
-            for (ObjectCursor<String> mappingIndexName : mapping.getMappings().keys()) {
-                ImmutableOpenMap<String, MappingMetaData> typeMappings = mapping.getMappings().get(mappingIndexName.value);
-                for (ObjectCursor<String> typeName : typeMappings.keys()) {
-                    MappingMetaData typeMapping = typeMappings.get(typeName.value);
-                    Map<String, Map<String, String>> properties = getPropertiesFromTypeMapping(typeMapping);
-                    if (properties == null) {
-                        continue;
-                    }
+        indexRefreshTracker.refresh(client, indexName);
+        GetMappingsResponse mapping = client.admin().indices().prepareGetMappings(indexName).get();
+        for (ObjectCursor<String> mappingIndexName : mapping.getMappings().keys()) {
+            ImmutableOpenMap<String, MappingMetaData> typeMappings = mapping.getMappings().get(mappingIndexName.value);
+            for (ObjectCursor<String> typeName : typeMappings.keys()) {
+                MappingMetaData typeMapping = typeMappings.get(typeName.value);
+                Map<String, Map<String, String>> properties = getPropertiesFromTypeMapping(typeMapping);
+                if (properties == null) {
+                    continue;
+                }
 
-                    for (Map.Entry<String, Map<String, String>> propertyEntry : properties.entrySet()) {
-                        String rawPropertyName = propertyEntry.getKey().replace(FIELDNAME_DOT_REPLACEMENT, ".");
-                        loadExistingPropertyMappingIntoIndexInfo(graph, indexInfo, rawPropertyName);
-                    }
+                for (Map.Entry<String, Map<String, String>> propertyEntry : properties.entrySet()) {
+                    String rawPropertyName = propertyEntry.getKey().replace(FIELDNAME_DOT_REPLACEMENT, ".");
+                    loadExistingPropertyMappingIntoIndexInfo(graph, indexInfo, rawPropertyName);
                 }
             }
-        } catch (IOException ex) {
-            throw new VertexiumException("Could not load type mappings", ex);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Map<String, String>> getPropertiesFromTypeMapping(MappingMetaData typeMapping) throws IOException {
+    private Map<String, Map<String, String>> getPropertiesFromTypeMapping(MappingMetaData typeMapping) {
         return (Map<String, Map<String, String>>) typeMapping.getSourceAsMap().get("properties");
     }
 
@@ -350,7 +348,6 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         addPropertyNameVisibility(graph, indexInfo, rawPropertyName, p.getPropertyVisibility());
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public void addElement(Graph graph, Element element, Authorizations authorizations) {
         if (MUTATION_LOGGER.isTraceEnabled()) {
@@ -365,7 +362,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
             flushObjectQueue.flush();
         }
 
-        UpdateRequestBuilder updateRequestBuilder = prepareUpdate(graph, element, authorizations);
+        UpdateRequestBuilder updateRequestBuilder = prepareUpdate(graph, element);
         addActionRequestBuilderForFlush(element, updateRequestBuilder);
 
         if (getConfig().isAutoFlush()) {
@@ -504,7 +501,9 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
             String remainingField = remainingPropertyEntry.getKey();
             Object remainingValue = remainingPropertyEntry.getValue();
             if (remainingValue instanceof List) {
-                ((List) remainingValue).forEach(v -> addPropertyValueToPropertiesMap(fieldsToSet, remainingField, v));
+                for (Object v : ((List) remainingValue)) {
+                    addPropertyValueToPropertiesMap(fieldsToSet, remainingField, v);
+                }
             } else {
                 addPropertyValueToPropertiesMap(fieldsToSet, remainingField, remainingValue);
             }
@@ -537,10 +536,10 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return indexInfo;
     }
 
-    private UpdateRequestBuilder prepareUpdate(Graph graph, Element element, Authorizations authorizations) {
+    private UpdateRequestBuilder prepareUpdate(Graph graph, Element element) {
         try {
             IndexInfo indexInfo = addPropertiesToIndex(graph, element, element.getProperties());
-            XContentBuilder source = buildJsonContentFromElement(graph, element, authorizations);
+            XContentBuilder source = buildJsonContentFromElement(graph, element);
             if (MUTATION_LOGGER.isTraceEnabled()) {
                 MUTATION_LOGGER.trace("addElement json: %s: %s", element.getId(), source.string());
             }
@@ -554,6 +553,17 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         } catch (IOException e) {
             throw new VertexiumException("Could not add element", e);
         }
+    }
+
+    private <T extends Element> void addActionRequestBuilderForFlush(
+        ElementMutation<T> elementMutation,
+        UpdateRequestBuilder updateRequestBuilder
+    ) {
+        addActionRequestBuilderForFlush(
+            elementMutation.getElementType(),
+            elementMutation.getElementId(),
+            updateRequestBuilder
+        );
     }
 
     private void addActionRequestBuilderForFlush(Element element, UpdateRequestBuilder updateRequestBuilder) {
@@ -607,7 +617,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
             for (Map.Entry<String, List<ExtendedDataMutation>> row : byRow.entrySet()) {
                 String rowId = row.getKey();
                 List<ExtendedDataMutation> columns = row.getValue();
-                addElementExtendedData(graph, element, tableName, rowId, columns, authorizations);
+                addElementExtendedData(graph, element, tableName, rowId, columns);
             }
         }
     }
@@ -621,9 +631,9 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void deleteExtendedData(
+    public <T extends Element> void deleteExtendedData(
         Graph graph,
-        Element element,
+        ElementMutation<T> elementMutation,
         String tableName,
         String row,
         String columnName,
@@ -631,10 +641,16 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Visibility visibility,
         Authorizations authorizations
     ) {
-        String extendedDataDocId = getIdStrategy().createExtendedDataDocId(element, tableName, row);
+        String extendedDataDocId = getIdStrategy().createExtendedDataDocId(elementMutation, tableName, row);
         String fieldName = addVisibilityToPropertyName(graph, columnName, visibility);
-        String indexName = getExtendedDataIndexName(element, tableName, row);
-        removeFieldsFromDocument(graph, indexName, element, extendedDataDocId, Lists.newArrayList(fieldName, fieldName + "_e"));
+        String indexName = getExtendedDataIndexName(elementMutation, tableName, row);
+        removeFieldsFromDocument(
+            graph,
+            indexName,
+            elementMutation,
+            extendedDataDocId,
+            Lists.newArrayList(fieldName, fieldName + "_e")
+        );
     }
 
     private void addElementExtendedData(
@@ -642,14 +658,13 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Element element,
         String tableName,
         String rowId,
-        List<ExtendedDataMutation> columns,
-        Authorizations authorizations
+        List<ExtendedDataMutation> columns
     ) {
         if (MUTATION_LOGGER.isTraceEnabled()) {
             MUTATION_LOGGER.trace("addElementExtendedData: %s:%s:%s", element.getId(), tableName, rowId);
         }
 
-        UpdateRequestBuilder updateRequestBuilder = prepareUpdate(graph, element, tableName, rowId, columns, authorizations);
+        UpdateRequestBuilder updateRequestBuilder = prepareUpdate(graph, element, tableName, rowId, columns);
         addActionRequestBuilderForFlush(element, tableName, rowId, updateRequestBuilder);
 
         if (getConfig().isAutoFlush()) {
@@ -750,7 +765,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
                                 property.getTimestamp(),
                                 property.getVisibility()
                             )).collect(Collectors.toList());
-                        return prepareUpdate(graph, element, tableName, rowId, columns, authorizations).request();
+                        return prepareUpdate(graph, element, tableName, rowId, columns).request();
                     }
                 });
             });
@@ -760,27 +775,33 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         }
     }
 
-    private UpdateRequestBuilder prepareUpdate(
+    private <T extends Element> UpdateRequestBuilder prepareUpdate(
         Graph graph,
-        Element element,
+        ElementMutation<T> elementMutation,
         String tableName,
         String rowId,
-        List<ExtendedDataMutation> columns,
-        Authorizations authorizations
+        List<ExtendedDataMutation> columns
     ) {
         try {
-            IndexInfo indexInfo = addExtendedDataColumnsToIndex(graph, element, tableName, rowId, columns);
-            String extendedDataDocId = getIdStrategy().createExtendedDataDocId(element, tableName, rowId);
+            IndexInfo indexInfo = addExtendedDataColumnsToIndex(graph, elementMutation, tableName, rowId, columns);
+            String extendedDataDocId = getIdStrategy().createExtendedDataDocId(elementMutation, tableName, rowId);
             getIndexRefreshTracker().pushChange(indexInfo.getIndexName());
 
             Map<String, Object> fieldsToSet =
                 getExtendedDataColumnsAsFields(graph, columns).entrySet().stream()
                     .collect(Collectors.toMap(e -> replaceFieldnameDots(e.getKey()), Map.Entry::getValue));
 
-            XContentBuilder source = buildJsonContentForExtendedDataUpsert(graph, element, tableName, rowId);
+            XContentBuilder source = buildJsonContentForExtendedDataUpsert(graph, elementMutation, tableName, rowId);
             if (MUTATION_LOGGER.isTraceEnabled()) {
                 String fieldsDebug = Joiner.on(", ").withKeyValueSeparator(": ").join(fieldsToSet);
-                MUTATION_LOGGER.trace("addElementExtendedData json: %s:%s:%s: %s {%s}", element.getId(), tableName, rowId, source.string(), fieldsDebug);
+                MUTATION_LOGGER.trace(
+                    "addElementExtendedData json: %s:%s:%s: %s {%s}",
+                    elementMutation.getElementId(),
+                    tableName,
+                    rowId,
+                    source.string(),
+                    fieldsDebug
+                );
             }
 
             return getClient()
@@ -798,27 +819,34 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         }
     }
 
-    private XContentBuilder buildJsonContentForExtendedDataUpsert(
+    private <T extends Element> XContentBuilder buildJsonContentForExtendedDataUpsert(
         Graph graph,
-        Element element,
+        ElementMutation<T> elementMutation,
         String tableName,
         String rowId
     ) throws IOException {
         XContentBuilder jsonBuilder;
         jsonBuilder = XContentFactory.jsonBuilder().startObject();
 
-        String elementTypeString = ElasticsearchDocumentType.getExtendedDataDocumentTypeFromElement(element).getKey();
-        jsonBuilder.field(ELEMENT_ID_FIELD_NAME, element.getId());
+        String elementTypeString = ElasticsearchDocumentType.getExtendedDataDocumentTypeFromElement(
+            elementMutation.getElementType()
+        ).getKey();
+        jsonBuilder.field(ELEMENT_ID_FIELD_NAME, elementMutation.getElementId());
         jsonBuilder.field(ELEMENT_TYPE_FIELD_NAME, elementTypeString);
-        String elementTypeVisibilityPropertyName = addElementTypeVisibilityPropertyToIndex(graph, element);
+        String elementTypeVisibilityPropertyName = addElementTypeVisibilityPropertyToExtendedDataIndex(
+            graph,
+            elementMutation,
+            tableName,
+            rowId
+        );
         jsonBuilder.field(elementTypeVisibilityPropertyName, elementTypeString);
         jsonBuilder.field(EXTENDED_DATA_TABLE_NAME_FIELD_NAME, tableName);
         jsonBuilder.field(EXTENDED_DATA_TABLE_ROW_ID_FIELD_NAME, rowId);
-        if (element instanceof Edge) {
-            Edge edge = (Edge) element;
-            jsonBuilder.field(IN_VERTEX_ID_FIELD_NAME, edge.getVertexId(Direction.IN));
-            jsonBuilder.field(OUT_VERTEX_ID_FIELD_NAME, edge.getVertexId(Direction.OUT));
-            jsonBuilder.field(EDGE_LABEL_FIELD_NAME, edge.getLabel());
+        if (elementMutation instanceof EdgeMutation) {
+            EdgeMutation edgeMutation = (EdgeMutation) elementMutation;
+            jsonBuilder.field(IN_VERTEX_ID_FIELD_NAME, edgeMutation.getVertexId(Direction.IN));
+            jsonBuilder.field(OUT_VERTEX_ID_FIELD_NAME, edgeMutation.getVertexId(Direction.OUT));
+            jsonBuilder.field(EDGE_LABEL_FIELD_NAME, edgeMutation.getEdgeLabel());
         }
 
         jsonBuilder.endObject();
@@ -921,7 +949,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         addElement(graph, element, authorizations);
     }
 
-    private XContentBuilder buildJsonContentFromElement(Graph graph, Element element, Authorizations authorizations) throws IOException {
+    private XContentBuilder buildJsonContentFromElement(Graph graph, Element element) throws IOException {
         XContentBuilder jsonBuilder;
         jsonBuilder = XContentFactory.jsonBuilder()
             .startObject();
@@ -1049,11 +1077,50 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return obj;
     }
 
-    private String addElementTypeVisibilityPropertyToIndex(Graph graph, Element element) throws IOException {
-        String elementTypeVisibilityPropertyName = addVisibilityToPropertyName(graph, ELEMENT_TYPE_FIELD_NAME, element.getVisibility());
+    private <T extends Element> String addElementTypeVisibilityPropertyToExtendedDataIndex(
+        Graph graph,
+        ElementMutation<T> elementMutation,
+        String tableName,
+        String rowId
+    ) {
+        String elementTypeVisibilityPropertyName = addVisibilityToPropertyName(
+            graph,
+            ELEMENT_TYPE_FIELD_NAME,
+            elementMutation.getElementVisibility()
+        );
+        String indexName = getExtendedDataIndexName(elementMutation, tableName, rowId);
+        IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
+        addPropertyToIndex(
+            graph,
+            indexInfo,
+            elementTypeVisibilityPropertyName,
+            elementMutation.getElementVisibility(),
+            String.class,
+            false,
+            false,
+            false
+        );
+        return elementTypeVisibilityPropertyName;
+    }
+
+    private String addElementTypeVisibilityPropertyToIndex(Graph graph, Element element) {
+        String elementTypeVisibilityPropertyName = addVisibilityToPropertyName(
+            graph,
+            ELEMENT_TYPE_FIELD_NAME,
+            element.getVisibility()
+        );
         String indexName = getIndexName(element);
         IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
-        addPropertyToIndex(graph, indexInfo, elementTypeVisibilityPropertyName, element.getVisibility(), String.class, false, false, false);
+        addPropertyToIndex(
+            graph,
+            indexInfo,
+            elementTypeVisibilityPropertyName,
+            element.getVisibility(),
+            String.class,
+            false,
+            false,
+            false
+        );
         return elementTypeVisibilityPropertyName;
     }
 
@@ -1447,7 +1514,13 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return true;
     }
 
-    protected void addPropertyDefinitionToIndex(Graph graph, IndexInfo indexInfo, String propertyName, Visibility propertyVisibility, PropertyDefinition propertyDefinition) throws IOException {
+    protected void addPropertyDefinitionToIndex(
+        Graph graph,
+        IndexInfo indexInfo,
+        String propertyName,
+        Visibility propertyVisibility,
+        PropertyDefinition propertyDefinition
+    ) {
         String propertyNameWithVisibility = addVisibilityToPropertyName(graph, propertyName, propertyVisibility);
 
         if (propertyDefinition.getDataType() == String.class) {
@@ -1477,7 +1550,13 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return graph.getPropertyDefinition(propertyName);
     }
 
-    public void addPropertyToIndex(Graph graph, IndexInfo indexInfo, String propertyName, Object propertyValue, Visibility propertyVisibility) throws IOException {
+    public void addPropertyToIndex(
+        Graph graph,
+        IndexInfo indexInfo,
+        String propertyName,
+        Object propertyValue,
+        Visibility propertyVisibility
+    ) {
         PropertyDefinition propertyDefinition = getPropertyDefinition(graph, propertyName);
         if (propertyDefinition != null) {
             addPropertyDefinitionToIndex(graph, indexInfo, propertyName, propertyVisibility, propertyDefinition);
@@ -1498,7 +1577,13 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         }
     }
 
-    private void addPropertyToIndexInner(Graph graph, IndexInfo indexInfo, String propertyName, Object propertyValue, Visibility propertyVisibility) throws IOException {
+    private void addPropertyToIndexInner(
+        Graph graph,
+        IndexInfo indexInfo,
+        String propertyName,
+        Object propertyValue,
+        Visibility propertyVisibility
+    ) {
         String propertyNameWithVisibility = addVisibilityToPropertyName(graph, propertyName, propertyVisibility);
 
         if (indexInfo.isPropertyDefined(propertyNameWithVisibility, propertyVisibility)) {
@@ -1538,7 +1623,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         boolean analyzed,
         boolean exact,
         boolean sortable
-    ) throws IOException {
+    ) {
         if (indexInfo.isPropertyDefined(propertyName, propertyVisibility)) {
             return;
         }
@@ -1577,6 +1662,15 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
 
             addPropertyNameVisibility(graph, indexInfo, propertyName, propertyVisibility);
             updateMetadata(graph, indexInfo);
+        } catch (IOException ex) {
+            throw new VertexiumException(
+                String.format(
+                    "Could not add property to index (index: %s, propertyName: %s)",
+                    indexInfo.getIndexName(),
+                    propertyName
+                ),
+                ex
+            );
         } finally {
             this.indexInfosLock.writeLock().unlock();
         }
@@ -1802,7 +1896,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         bulkUpdate(graph, new ConvertingIterable<Element, UpdateRequest>(elements) {
             @Override
             protected UpdateRequest convert(Element element) {
-                UpdateRequest request = prepareUpdate(graph, element, authorizations).request();
+                UpdateRequest request = prepareUpdate(graph, element).request();
                 logRequestSize(element.getId(), request);
                 return request;
             }
@@ -1902,10 +1996,10 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         removeFieldsFromDocument(graph, indexName, element, documentId, fields);
     }
 
-    private void removeFieldsFromDocument(
+    private <T extends Element> void removeFieldsFromDocument(
         Graph graph,
         String indexName,
-        Element element,
+        ElementMutation<T> elementMutation,
         String documentId,
         Collection<String> fields
     ) {
@@ -1915,7 +2009,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
 
         getIndexRefreshTracker().pushChange(indexName);
         UpdateRequestBuilder updateRequestBuilder = prepareRemoveFieldsFromDocument(indexName, documentId, fields);
-        addActionRequestBuilderForFlush(element, updateRequestBuilder);
+        addActionRequestBuilderForFlush(elementMutation, updateRequestBuilder);
 
         if (getConfig().isAutoFlush()) {
             flush(graph);
@@ -2008,8 +2102,12 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return indexSelectionStrategy.getIndexName(this, element);
     }
 
-    protected String getExtendedDataIndexName(Element element, String tableName, String rowId) {
-        return indexSelectionStrategy.getExtendedDataIndexName(this, element, tableName, rowId);
+    protected <T extends Element> String getExtendedDataIndexName(
+        ElementMutation<T> elementMutation,
+        String tableName,
+        String rowId
+    ) {
+        return indexSelectionStrategy.getExtendedDataIndexName(this, elementMutation, tableName, rowId);
     }
 
     protected String getExtendedDataIndexName(ExtendedDataRowId rowId) {
@@ -2025,30 +2123,28 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return false;
     }
 
-    private IndexInfo addExtendedDataColumnsToIndex(Graph graph, Element element, String tableName, String rowId, List<ExtendedDataMutation> columns) {
-        try {
-            String indexName = getExtendedDataIndexName(element, tableName, rowId);
-            IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
-            for (ExtendedDataMutation column : columns) {
-                addPropertyToIndex(graph, indexInfo, column.getColumnName(), column.getValue(), column.getVisibility());
-            }
-            return indexInfo;
-        } catch (IOException e) {
-            throw new VertexiumException("Could not add properties to index", e);
+    private <T extends Element> IndexInfo addExtendedDataColumnsToIndex(
+        Graph graph,
+        ElementMutation<T> elementMutation,
+        String tableName,
+        String rowId,
+        List<ExtendedDataMutation> columns
+    ) {
+        String indexName = getExtendedDataIndexName(elementMutation, tableName, rowId);
+        IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
+        for (ExtendedDataMutation column : columns) {
+            addPropertyToIndex(graph, indexInfo, column.getColumnName(), column.getValue(), column.getVisibility());
         }
+        return indexInfo;
     }
 
     public IndexInfo addPropertiesToIndex(Graph graph, Element element, Iterable<Property> properties) {
-        try {
-            String indexName = getIndexName(element);
-            IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
-            for (Property property : properties) {
-                addPropertyToIndex(graph, indexInfo, property.getName(), property.getValue(), property.getVisibility());
-            }
-            return indexInfo;
-        } catch (IOException e) {
-            throw new VertexiumException("Could not add properties to index", e);
+        String indexName = getIndexName(element);
+        IndexInfo indexInfo = ensureIndexCreatedAndInitialized(indexName);
+        for (Property property : properties) {
+            addPropertyToIndex(graph, indexInfo, property.getName(), property.getValue(), property.getVisibility());
         }
+        return indexInfo;
     }
 
     protected boolean shouldIgnoreType(Class dataType) {

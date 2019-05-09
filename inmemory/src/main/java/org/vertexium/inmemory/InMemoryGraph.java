@@ -398,15 +398,15 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
                 edgeBuilder.getElementId(),
                 new AlterVisibilityMutation(incrementingTimestamp++, edgeBuilder.getVisibility(), null),
                 new ElementTimestampMutation(incrementingTimestamp++),
-                new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getLabel()),
+                new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()),
                 new EdgeSetupMutation(incrementingTimestamp++, outVertexId, inVertexId)
             );
         } else {
             edges.append(edgeBuilder.getElementId(), new ElementTimestampMutation(incrementingTimestamp++));
             if (edgeBuilder.getNewEdgeLabel() == null) {
                 AlterEdgeLabelMutation alterEdgeLabelMutation = (AlterEdgeLabelMutation) edgeTableElement.findLastMutation(AlterEdgeLabelMutation.class);
-                if (alterEdgeLabelMutation != null && !alterEdgeLabelMutation.getNewEdgeLabel().equals(edgeBuilder.getLabel())) {
-                    edges.append(edgeBuilder.getElementId(), new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getLabel()));
+                if (alterEdgeLabelMutation != null && !alterEdgeLabelMutation.getNewEdgeLabel().equals(edgeBuilder.getEdgeLabel())) {
+                    edges.append(edgeBuilder.getElementId(), new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()));
                 }
             }
         }

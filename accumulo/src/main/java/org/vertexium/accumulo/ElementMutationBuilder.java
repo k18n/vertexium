@@ -308,7 +308,7 @@ public abstract class ElementMutationBuilder {
         Mutation m = createMutationForEdgeBuilder(graph, edgeBuilder, edgeColumnVisibility, timestamp);
         saveEdgeMutation(m);
 
-        String edgeLabel = edgeBuilder.getNewEdgeLabel() != null ? edgeBuilder.getNewEdgeLabel() : edgeBuilder.getLabel();
+        String edgeLabel = edgeBuilder.getNewEdgeLabel() != null ? edgeBuilder.getNewEdgeLabel() : edgeBuilder.getEdgeLabel();
         saveEdgeInfoOnVertex(
             edgeBuilder.getElementId(),
             edgeBuilder.getOutVertexId(),
@@ -360,10 +360,10 @@ public abstract class ElementMutationBuilder {
     private Mutation createMutationForEdgeBuilder(AccumuloGraph graph, EdgeBuilderBase edgeBuilder, ColumnVisibility edgeColumnVisibility, long timestamp) {
         String edgeRowKey = edgeBuilder.getElementId();
         Mutation m = new Mutation(edgeRowKey);
-        String edgeLabel = edgeBuilder.getLabel();
+        String edgeLabel = edgeBuilder.getEdgeLabel();
         if (edgeBuilder.getNewEdgeLabel() != null) {
             edgeLabel = edgeBuilder.getNewEdgeLabel();
-            m.putDelete(AccumuloEdge.CF_SIGNAL, new Text(edgeBuilder.getLabel()), edgeColumnVisibility, currentTimeMillis());
+            m.putDelete(AccumuloEdge.CF_SIGNAL, new Text(edgeBuilder.getEdgeLabel()), edgeColumnVisibility, currentTimeMillis());
         }
         m.put(AccumuloEdge.CF_SIGNAL, new Text(edgeLabel), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
         m.put(AccumuloEdge.CF_OUT_VERTEX, new Text(edgeBuilder.getOutVertexId()), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);

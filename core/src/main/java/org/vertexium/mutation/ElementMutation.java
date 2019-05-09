@@ -7,6 +7,21 @@ public interface ElementMutation<T extends Element> {
     String DEFAULT_KEY = "";
 
     /**
+     * The type of element this mutation applies to.
+     */
+    ElementType getElementType();
+
+    /**
+     * The ID of the element this mutation applies to.
+     */
+    String getElementId();
+
+    /**
+     * The visibility of the element this mutation applies to.
+     */
+    Visibility getElementVisibility();
+
+    /**
      * saves the properties to the graph.
      *
      * @return the element which was mutated.

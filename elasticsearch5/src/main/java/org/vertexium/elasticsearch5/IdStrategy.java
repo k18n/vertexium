@@ -8,6 +8,7 @@ import org.vertexium.ExtendedDataRowId;
 import org.vertexium.VertexiumException;
 import org.vertexium.elasticsearch5.utils.Ascii85;
 import org.vertexium.elasticsearch5.utils.Murmur3;
+import org.vertexium.mutation.ElementMutation;
 
 public class IdStrategy {
     public static final String ELEMENT_TYPE = "e";
@@ -15,6 +16,10 @@ public class IdStrategy {
 
     public String getType() {
         return ELEMENT_TYPE;
+    }
+
+    public <T extends Element> String createExtendedDataDocId(ElementMutation<T> element, String tableName, String rowId) {
+        return createExtendedDataDocId(element.getElementId(), tableName, rowId);
     }
 
     public String createExtendedDataDocId(Element element, String tableName, String rowId) {
