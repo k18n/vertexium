@@ -188,4 +188,9 @@ public class AccumuloEdge extends AccumuloElement implements Edge {
             }
         };
     }
+
+    @Override
+    public ElementType getElementType() {
+        return ElementType.EDGE;
+    }
 }

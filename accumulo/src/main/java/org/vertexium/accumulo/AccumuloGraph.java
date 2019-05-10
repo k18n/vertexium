@@ -372,7 +372,7 @@ public class AccumuloGraph extends GraphBaseWithSearchIndex implements Traceable
                 Iterable<Visibility> hiddenVisibilities = null;
                 return new AccumuloVertex(
                     AccumuloGraph.this,
-                    getElementId(),
+                    getId(),
                     getVisibility(),
                     getProperties(),
                     getPropertyDeletes(),
@@ -829,9 +829,9 @@ public class AccumuloGraph extends GraphBaseWithSearchIndex implements Traceable
         Iterable<Visibility> hiddenVisibilities = null;
         return new AccumuloEdge(
             accumuloGraph,
-            edgeBuilder.getElementId(),
-            edgeBuilder.getOutVertexId(),
-            edgeBuilder.getInVertexId(),
+            edgeBuilder.getId(),
+            edgeBuilder.getVertexId(Direction.OUT),
+            edgeBuilder.getVertexId(Direction.IN),
             edgeBuilder.getEdgeLabel(),
             edgeBuilder.getNewEdgeLabel(),
             edgeBuilder.getVisibility(),

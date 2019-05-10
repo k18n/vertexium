@@ -562,14 +562,11 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         UpdateRequestBuilder updateRequestBuilder
     ) {
         addActionRequestBuilderForFlush(
-            elementLocation.getElementType(),
-            elementLocation.getId(),
+            elementLocation,
+            null,
+            null,
             updateRequestBuilder
         );
-    }
-
-    private void addActionRequestBuilderForFlush(ElementType elementType, String elementId, UpdateRequestBuilder updateRequestBuilder) {
-        addActionRequestBuilderForFlush(elementType, elementId, null, null, updateRequestBuilder);
     }
 
     private void addActionRequestBuilderForFlush(
@@ -578,32 +575,16 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         String rowId,
         UpdateRequestBuilder updateRequestBuilder
     ) {
-        addActionRequestBuilderForFlush(
-            elementLocation.getElementType(),
-            elementLocation.getId(),
-            extendedDataTableName,
-            rowId,
-            updateRequestBuilder
-        );
-    }
-
-    private void addActionRequestBuilderForFlush(
-        ElementType elementType,
-        String elementId,
-        String extendedDataTableName,
-        String rowId,
-        UpdateRequestBuilder updateRequestBuilder
-    ) {
         Future future;
         try {
-            logRequestSize(elementId, updateRequestBuilder.request());
+            logRequestSize(elementLocation.getId(), updateRequestBuilder.request());
             future = updateRequestBuilder.execute();
         } catch (Exception ex) {
             LOGGER.debug("Could not execute update: %s", ex.getMessage());
             future = SettableFuture.create();
             ((SettableFuture) future).setException(ex);
         }
-        flushObjectQueue.add(elementType, elementId, extendedDataTableName, rowId, updateRequestBuilder, future);
+        flushObjectQueue.add(elementLocation, extendedDataTableName, rowId, updateRequestBuilder, future);
     }
 
     @Override

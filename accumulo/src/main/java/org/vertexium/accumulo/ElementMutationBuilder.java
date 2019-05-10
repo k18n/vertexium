@@ -52,7 +52,7 @@ public abstract class ElementMutationBuilder {
         Mutation m = createMutationForVertexBuilder(graph, vertexBuilder, timestamp);
         saveVertexMutation(m);
         saveExtendedDataMutations(graph, ElementType.VERTEX, vertexBuilder);
-        saveExtendedDataDeletes(graph, vertexBuilder.getElementId(), ElementType.VERTEX, vertexBuilder.getExtendedDataDeletes());
+        saveExtendedDataDeletes(graph, vertexBuilder.getId(), ElementType.VERTEX, vertexBuilder.getExtendedDataDeletes());
     }
 
     private void saveExtendedDataMutations(AccumuloGraph graph, ElementType elementType, ElementBuilder elementBuilder) {
@@ -61,7 +61,7 @@ public abstract class ElementMutationBuilder {
         }
 
         Iterable<ExtendedDataMutation> extendedData = elementBuilder.getExtendedData();
-        saveExtendedData(graph, elementBuilder.getElementId(), elementType, extendedData);
+        saveExtendedData(graph, elementBuilder.getId(), elementType, extendedData);
     }
 
     void saveExtendedData(AccumuloGraph graph, String elementId, ElementType elementType, Iterable<ExtendedDataMutation> extendedData) {
@@ -122,7 +122,7 @@ public abstract class ElementMutationBuilder {
     protected abstract void saveVertexMutation(Mutation m);
 
     private Mutation createMutationForVertexBuilder(AccumuloGraph graph, VertexBuilder vertexBuilder, long timestamp) {
-        String vertexRowKey = vertexBuilder.getElementId();
+        String vertexRowKey = vertexBuilder.getId();
         Mutation m = new Mutation(vertexRowKey);
         m.put(AccumuloVertex.CF_SIGNAL, EMPTY_TEXT, visibilityToAccumuloVisibility(vertexBuilder.getVisibility()), timestamp, EMPTY_VALUE);
         createMutationForElementBuilder(graph, vertexBuilder, vertexRowKey, m);
@@ -310,15 +310,15 @@ public abstract class ElementMutationBuilder {
 
         String edgeLabel = edgeBuilder.getNewEdgeLabel() != null ? edgeBuilder.getNewEdgeLabel() : edgeBuilder.getEdgeLabel();
         saveEdgeInfoOnVertex(
-            edgeBuilder.getElementId(),
-            edgeBuilder.getOutVertexId(),
-            edgeBuilder.getInVertexId(),
+            edgeBuilder.getId(),
+            edgeBuilder.getVertexId(Direction.OUT),
+            edgeBuilder.getVertexId(Direction.IN),
             edgeLabel,
             edgeColumnVisibility
         );
 
         saveExtendedDataMutations(graph, ElementType.EDGE, edgeBuilder);
-        saveExtendedDataDeletes(graph, edgeBuilder.getElementId(), ElementType.EDGE, edgeBuilder.getExtendedDataDeletes());
+        saveExtendedDataDeletes(graph, edgeBuilder.getId(), ElementType.EDGE, edgeBuilder.getExtendedDataDeletes());
     }
 
     private void saveEdgeInfoOnVertex(String edgeId, String outVertexId, String inVertexId, String edgeLabel, ColumnVisibility edgeColumnVisibility) {
@@ -358,7 +358,7 @@ public abstract class ElementMutationBuilder {
     protected abstract void saveEdgeMutation(Mutation m);
 
     private Mutation createMutationForEdgeBuilder(AccumuloGraph graph, EdgeBuilderBase edgeBuilder, ColumnVisibility edgeColumnVisibility, long timestamp) {
-        String edgeRowKey = edgeBuilder.getElementId();
+        String edgeRowKey = edgeBuilder.getId();
         Mutation m = new Mutation(edgeRowKey);
         String edgeLabel = edgeBuilder.getEdgeLabel();
         if (edgeBuilder.getNewEdgeLabel() != null) {
@@ -366,8 +366,8 @@ public abstract class ElementMutationBuilder {
             m.putDelete(AccumuloEdge.CF_SIGNAL, new Text(edgeBuilder.getEdgeLabel()), edgeColumnVisibility, currentTimeMillis());
         }
         m.put(AccumuloEdge.CF_SIGNAL, new Text(edgeLabel), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
-        m.put(AccumuloEdge.CF_OUT_VERTEX, new Text(edgeBuilder.getOutVertexId()), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
-        m.put(AccumuloEdge.CF_IN_VERTEX, new Text(edgeBuilder.getInVertexId()), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
+        m.put(AccumuloEdge.CF_OUT_VERTEX, new Text(edgeBuilder.getVertexId(Direction.OUT)), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
+        m.put(AccumuloEdge.CF_IN_VERTEX, new Text(edgeBuilder.getVertexId(Direction.IN)), edgeColumnVisibility, timestamp, ElementMutationBuilder.EMPTY_VALUE);
         createMutationForElementBuilder(graph, edgeBuilder, edgeRowKey, m);
         return m;
     }

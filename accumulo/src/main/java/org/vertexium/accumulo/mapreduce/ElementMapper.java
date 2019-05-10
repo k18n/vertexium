@@ -113,7 +113,7 @@ public abstract class ElementMapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> extends Ma
 
                 return new AccumuloVertex(
                     graph,
-                    getElementId(),
+                    getId(),
                     getVisibility(),
                     getProperties(),
                     getPropertyDeletes(),
@@ -177,9 +177,9 @@ public abstract class ElementMapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> extends Ma
 
                 AccumuloEdge edge = new AccumuloEdge(
                     null,
-                    getElementId(),
-                    getOutVertexId(),
-                    getInVertexId(),
+                    getId(),
+                    getVertexId(Direction.OUT),
+                    getVertexId(Direction.IN),
                     getEdgeLabel(),
                     getNewEdgeLabel(),
                     getVisibility(),
@@ -218,7 +218,7 @@ public abstract class ElementMapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> extends Ma
 
                 AccumuloEdge edge = new AccumuloEdge(
                     null,
-                    getElementId(),
+                    getId(),
                     getOutVertex().getId(),
                     getInVertex().getId(),
                     getEdgeLabel(),
