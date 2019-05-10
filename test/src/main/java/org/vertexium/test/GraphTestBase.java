@@ -1331,8 +1331,9 @@ public abstract class GraphTestBase {
             searchIndex.truncate(graph);
             searchIndex.flush(graph);
 
+            ElementMutation<? extends Element> mutation = graph.getVertex("v1", AUTHORIZATIONS_A).prepareMutation();
             Iterable<ExtendedDataRow> extendedData = graph.getExtendedData(ElementType.VERTEX, "v1", "table1", AUTHORIZATIONS_A);
-            searchIndex.addExtendedData(graph, extendedData, AUTHORIZATIONS_A);
+            searchIndex.addExtendedData(graph, mutation, extendedData, AUTHORIZATIONS_A);
             graph.flush();
         }
 
@@ -2615,7 +2616,7 @@ public abstract class GraphTestBase {
 
     @Test
     public void testSaveElementMutations() {
-        List<ElementMutation> mutations = new ArrayList<>();
+        List<ElementMutation<? extends Element>> mutations = new ArrayList<>();
         for (int i = 0; i < 2; i++) {
             ElementBuilder<Vertex> m = graph.prepareVertex("v" + i, VISIBILITY_A)
                 .addPropertyValue("k1", "name", "joe", VISIBILITY_A)
@@ -9016,7 +9017,7 @@ public abstract class GraphTestBase {
 
     private void benchmarkAddVerticesSaveElementMutations(int vertexCount) {
         double startTime = System.currentTimeMillis();
-        List<ElementMutation> mutations = new ArrayList<>();
+        List<ElementMutation<? extends Element>> mutations = new ArrayList<>();
         for (int i = 0; i < vertexCount; i++) {
             String vertexId = "v" + i;
             ElementBuilder<Vertex> m = graph.prepareVertex(vertexId, VISIBILITY_A)

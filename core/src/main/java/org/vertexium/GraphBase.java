@@ -960,7 +960,10 @@ public abstract class GraphBase implements Graph {
     }
 
     @Override
-    public Iterable<Element> saveElementMutations(Iterable<ElementMutation> mutations, Authorizations authorizations) {
+    public Iterable<Element> saveElementMutations(
+        Iterable<ElementMutation<? extends Element>> mutations,
+        Authorizations authorizations
+    ) {
         List<Element> elements = new ArrayList<>();
         for (ElementMutation m : mutations) {
             if (m instanceof ExistingElementMutation && !m.hasChanges()) {

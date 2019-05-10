@@ -129,22 +129,22 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
             public Vertex save(Authorizations authorizations) {
                 addValidAuthorizations(authorizations.getAuthorizations());
                 boolean isNew = false;
-                InMemoryTableElement vertexTableElement = InMemoryGraph.this.vertices.getTableElement(getElementId());
+                InMemoryTableElement vertexTableElement = InMemoryGraph.this.vertices.getTableElement(getId());
                 if (vertexTableElement == null) {
                     isNew = true;
                     vertices.append(
-                        getElementId(),
+                        getId(),
                         new AlterVisibilityMutation(timestampLong, getVisibility(), null),
                         new ElementTimestampMutation(timestampLong)
                     );
                 } else {
                     if (vertexTableElement.getVisibility().equals(getVisibility())) {
-                        vertices.append(getElementId(), new ElementTimestampMutation(timestampLong));
+                        vertices.append(getId(), new ElementTimestampMutation(timestampLong));
                     } else {
-                        vertices.append(getElementId(), new AlterVisibilityMutation(timestampLong, getVisibility(), null), new ElementTimestampMutation(timestampLong));
+                        vertices.append(getId(), new AlterVisibilityMutation(timestampLong, getVisibility(), null), new ElementTimestampMutation(timestampLong));
                     }
                 }
-                InMemoryVertex vertex = InMemoryGraph.this.vertices.get(InMemoryGraph.this, getElementId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
+                InMemoryVertex vertex = InMemoryGraph.this.vertices.get(InMemoryGraph.this, getId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
                 if (isNew && hasEventListeners()) {
                     fireGraphEvent(new AddVertexEvent(InMemoryGraph.this, vertex));
                 }
@@ -153,11 +153,11 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
                 // to more closely simulate how accumulo works. add a potentially sparse (in case of an update) vertex to the search index.
                 if (getIndexHint() != IndexHint.DO_NOT_INDEX) {
                     getSearchIndex().addElement(InMemoryGraph.this, vertex, authorizations);
-                    getSearchIndex().addElementExtendedData(InMemoryGraph.this, vertex, getExtendedData(), authorizations);
+                    getSearchIndex().addElementExtendedData(InMemoryGraph.this, this, getExtendedData(), authorizations);
                     for (ExtendedDataDeleteMutation m : getExtendedDataDeletes()) {
                         getSearchIndex().deleteExtendedData(
                             InMemoryGraph.this,
-                            vertex,
+                            this,
                             m.getTableName(),
                             m.getRow(),
                             m.getColumnName(),
@@ -359,7 +359,7 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
             @Override
             public Edge save(Authorizations authorizations) {
                 addValidAuthorizations(authorizations.getAuthorizations());
-                return savePreparedEdge(this, getOutVertexId(), getInVertexId(), timestamp, authorizations);
+                return savePreparedEdge(this, getVertexId(Direction.OUT), getVertexId(Direction.IN), timestamp, authorizations);
             }
         };
     }
@@ -390,31 +390,31 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
             IncreasingTime.advanceTime(10);
         }
         long incrementingTimestamp = timestamp;
-        InMemoryTableElement edgeTableElement = this.edges.getTableElement(edgeBuilder.getElementId());
+        InMemoryTableElement edgeTableElement = this.edges.getTableElement(edgeBuilder.getId());
         boolean isNew = false;
         if (edgeTableElement == null) {
             isNew = true;
             edges.append(
-                edgeBuilder.getElementId(),
+                edgeBuilder.getId(),
                 new AlterVisibilityMutation(incrementingTimestamp++, edgeBuilder.getVisibility(), null),
                 new ElementTimestampMutation(incrementingTimestamp++),
                 new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()),
                 new EdgeSetupMutation(incrementingTimestamp++, outVertexId, inVertexId)
             );
         } else {
-            edges.append(edgeBuilder.getElementId(), new ElementTimestampMutation(incrementingTimestamp++));
+            edges.append(edgeBuilder.getId(), new ElementTimestampMutation(incrementingTimestamp++));
             if (edgeBuilder.getNewEdgeLabel() == null) {
                 AlterEdgeLabelMutation alterEdgeLabelMutation = (AlterEdgeLabelMutation) edgeTableElement.findLastMutation(AlterEdgeLabelMutation.class);
                 if (alterEdgeLabelMutation != null && !alterEdgeLabelMutation.getNewEdgeLabel().equals(edgeBuilder.getEdgeLabel())) {
-                    edges.append(edgeBuilder.getElementId(), new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()));
+                    edges.append(edgeBuilder.getId(), new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()));
                 }
             }
         }
         if (edgeBuilder.getNewEdgeLabel() != null) {
-            edges.append(edgeBuilder.getElementId(), new AlterEdgeLabelMutation(incrementingTimestamp, edgeBuilder.getNewEdgeLabel()));
+            edges.append(edgeBuilder.getId(), new AlterEdgeLabelMutation(incrementingTimestamp, edgeBuilder.getNewEdgeLabel()));
         }
 
-        InMemoryEdge edge = this.edges.get(InMemoryGraph.this, edgeBuilder.getElementId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
+        InMemoryEdge edge = this.edges.get(InMemoryGraph.this, edgeBuilder.getId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
         if (isNew && hasEventListeners()) {
             fireGraphEvent(new AddEdgeEvent(InMemoryGraph.this, edge));
         }
@@ -422,11 +422,11 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
 
         if (edgeBuilder.getIndexHint() != IndexHint.DO_NOT_INDEX) {
             getSearchIndex().addElement(InMemoryGraph.this, edge, authorizations);
-            getSearchIndex().addElementExtendedData(InMemoryGraph.this, edge, edgeBuilder.getExtendedData(), authorizations);
+            getSearchIndex().addElementExtendedData(InMemoryGraph.this, edgeBuilder, edgeBuilder.getExtendedData(), authorizations);
             for (ExtendedDataDeleteMutation m : edgeBuilder.getExtendedDataDeletes()) {
                 getSearchIndex().deleteExtendedData(
                     InMemoryGraph.this,
-                    edge,
+                    edgeBuilder,
                     m.getTableName(),
                     m.getRow(),
                     m.getColumnName(),
@@ -847,8 +847,11 @@ public class InMemoryGraph extends GraphBaseWithSearchIndex {
     }
 
     protected StreamingPropertyValueRef saveStreamingPropertyValue(
-        String elementId, String key, String name,
-        Visibility visibility, long timestamp,
+        String elementId,
+        String key,
+        String name,
+        Visibility visibility,
+        long timestamp,
         StreamingPropertyValue value
     ) {
         return new InMemoryStreamingPropertyValueRef(value);

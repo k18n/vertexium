@@ -16,7 +16,7 @@ import java.util.stream.Stream;
  * For example a property with key "key1" and name "age" could have to values, one with visibility "a" and one
  * with visibility "b".
  */
-public interface Element extends VertexiumObject {
+public interface Element extends VertexiumObject, ElementLocation {
     /**
      * Meta property name used for operations such as sorting
      */

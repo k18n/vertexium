@@ -30,6 +30,11 @@ public class EdgeInfoEdge extends ElementBase implements Edge {
     }
 
     @Override
+    public ElementType getElementType() {
+        return ElementType.EDGE;
+    }
+
+    @Override
     public String getLabel() {
         return edgeInfo.getLabel();
     }

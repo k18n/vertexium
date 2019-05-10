@@ -3,23 +3,8 @@ package org.vertexium.mutation;
 import org.vertexium.*;
 import org.vertexium.search.IndexHint;
 
-public interface ElementMutation<T extends Element> {
+public interface ElementMutation<T extends Element> extends ElementLocation {
     String DEFAULT_KEY = "";
-
-    /**
-     * The type of element this mutation applies to.
-     */
-    ElementType getElementType();
-
-    /**
-     * The ID of the element this mutation applies to.
-     */
-    String getElementId();
-
-    /**
-     * The visibility of the element this mutation applies to.
-     */
-    Visibility getElementVisibility();
 
     /**
      * saves the properties to the graph.

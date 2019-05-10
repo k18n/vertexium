@@ -1183,7 +1183,10 @@ public interface Graph {
      * @param authorizations the authorizations used during save
      * @return the elements which were saved
      */
-    Iterable<Element> saveElementMutations(Iterable<ElementMutation> mutations, Authorizations authorizations);
+    Iterable<Element> saveElementMutations(
+        Iterable<ElementMutation<? extends Element>> mutations,
+        Authorizations authorizations
+    );
 
     /**
      * Opens multiple StreamingPropertyValue input streams at once. This can have performance benefits by

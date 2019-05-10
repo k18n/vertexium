@@ -17,14 +17,37 @@ public abstract class ElementBuilder<T extends Element> implements ElementMutati
     private final List<PropertySoftDeleteMutation> propertySoftDeletes = new ArrayList<>();
     private final List<ExtendedDataMutation> extendedDatas = new ArrayList<>();
     private final List<ExtendedDataDeleteMutation> extendedDataDeletes = new ArrayList<>();
+    private final ElementType elementType;
     private final String elementId;
+    private final Visibility elementVisibility;
     private IndexHint indexHint = IndexHint.INDEX;
 
-    protected ElementBuilder(String elementId) {
+    protected ElementBuilder(ElementType elementType, String elementId, Visibility elementVisibility) {
         KeyUtils.checkKey(elementId, "Invalid elementId");
+        this.elementType = elementType;
         this.elementId = elementId;
+        this.elementVisibility = elementVisibility;
     }
 
+    @Override
+    public ElementType getElementType() {
+        return elementType;
+    }
+
+    @Override
+    public Visibility getVisibility() {
+        return elementVisibility;
+    }
+
+    @Override
+    public String getId() {
+        return elementId;
+    }
+
+    /**
+     * @deprecated use {@link #getId()}
+     */
+    @Deprecated
     public String getElementId() {
         return elementId;
     }

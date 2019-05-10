@@ -10,7 +10,7 @@ public interface EdgeMutation extends ElementMutation<Edge> {
 
     long getAlterEdgeLabelTimestamp();
 
-    String getVertexId(Direction in);
+    String getVertexId(Direction direction);
 
     String getEdgeLabel();
 }
