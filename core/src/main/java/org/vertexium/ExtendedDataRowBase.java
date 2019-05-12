@@ -7,6 +7,7 @@ import org.vertexium.util.ConvertingIterable;
 import org.vertexium.util.FilterIterable;
 
 import java.util.Iterator;
+import java.util.Set;
 
 public abstract class ExtendedDataRowBase implements ExtendedDataRow {
     private final FetchHints fetchHints;
