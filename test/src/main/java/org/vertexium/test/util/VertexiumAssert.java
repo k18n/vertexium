@@ -32,6 +32,9 @@ public class VertexiumAssert {
     }
 
     public static void assertVertexIdsAnyOrder(Iterable<Vertex> vertices, String... expectedIds) {
+        if (vertices instanceof QueryResultsIterable) {
+            assertEquals(expectedIds.length, ((QueryResultsIterable<Vertex>) vertices).getTotalHits());
+        }
         assertElementIdsAnyOrder(vertices, expectedIds);
     }
 
@@ -92,7 +95,7 @@ public class VertexiumAssert {
         int expectedTotalHits,
         IterableWithTotalHits<?> results
     ) {
-        assertEquals(expectedTotalHits, results.getTotalHits());
+        assertEquals("total hits", expectedTotalHits, results.getTotalHits());
         assertCount(expectedCount, results);
     }
 
@@ -103,7 +106,7 @@ public class VertexiumAssert {
             count++;
             it.next();
         }
-        assertEquals(expectedCount, count);
+        assertEquals("count", expectedCount, count);
         assertFalse(it.hasNext());
         try {
             it.next();
@@ -119,6 +122,18 @@ public class VertexiumAssert {
 
     public static void clearGraphEvents() {
         graphEvents.clear();
+    }
+
+    public static void assertRowIdsAnyOrder(Iterable<ExtendedDataRow> rows, String... expectedRowIds) {
+        if (rows instanceof QueryResultsIterable) {
+            assertEquals(
+                "search index total hits mismatch",
+                expectedRowIds.length,
+                ((QueryResultsIterable<ExtendedDataRow>) rows).getTotalHits()
+            );
+        }
+        List<String> foundRowIds = getRowIds(rows);
+        assertEquals(idsToStringSorted(Lists.newArrayList(expectedRowIds)), idsToStringSorted(foundRowIds));
     }
 
     public static void assertRowIdsAnyOrder(Iterable<String> expectedRowIds, Iterable<? extends VertexiumObject> searchResults) {

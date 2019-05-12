@@ -664,6 +664,16 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
         addMutation(new SoftDeletePropertyMutation(timestamp, key, name, propertyVisibility, data));
     }
 
+    public void appendAddAdditionalVisibilityMutation(String visibility, Object eventData) {
+        long timestamp = IncreasingTime.currentTimeMillis();
+        addMutation(new AddAdditionalVisibilityMutation(timestamp, visibility, eventData));
+    }
+
+    public void appendDeleteAdditionalVisibilityMutation(String visibility, Object eventData) {
+        long timestamp = IncreasingTime.currentTimeMillis();
+        addMutation(new DeleteAdditionalVisibilityMutation(timestamp, visibility, eventData));
+    }
+
     public void appendAlterVisibilityMutation(Visibility newVisibility, Object data) {
         long timestamp = IncreasingTime.currentTimeMillis();
         addMutation(new AlterVisibilityMutation(timestamp, newVisibility, data));
@@ -703,7 +713,16 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
         );
     }
 
-    public boolean canRead(Authorizations authorizations) {
+    public boolean canRead(FetchHints fetchHints, Authorizations authorizations) {
+        if (!fetchHints.isIgnoreAdditionalVisibilities()) {
+            Visibility additionalVisibility = getAdditionalVisibilitiesAsVisibility();
+            if (additionalVisibility != null) {
+                if (!authorizations.canRead(additionalVisibility)) {
+                    return false;
+                }
+            }
+        }
+
         // this is just a shortcut so that we don't need to construct evaluators and visibility objects to check for an empty string.
         //noinspection SimplifiableIfStatement
         if (getVisibility().getVisibilityString().length() == 0) {
@@ -720,6 +739,37 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
             return true;
         }
         return authorizations.canRead(visibility);
+    }
+
+    private Visibility getAdditionalVisibilitiesAsVisibility() {
+        Set<String> additionalVisibilities = getAdditionalVisibilities();
+        if (additionalVisibilities.size() == 0) {
+            return null;
+        }
+        String visibilityString = Joiner.on("&").join(
+            additionalVisibilities.stream()
+                .map(av -> String.format("(%s)", av))
+                .collect(Collectors.toSet())
+        );
+        return new Visibility(visibilityString);
+    }
+
+    public Set<String> getAdditionalVisibilities() {
+        Set<String> results = new HashSet<>();
+
+        mutationLock.readLock().lock();
+        try {
+            for (Mutation m : this.mutations) {
+                if (m instanceof AddAdditionalVisibilityMutation) {
+                    results.add(((AddAdditionalVisibilityMutation) m).getAdditionalVisibility());
+                } else if (m instanceof DeleteAdditionalVisibilityMutation) {
+                    results.remove(((DeleteAdditionalVisibilityMutation) m).getAdditionalVisibility());
+                }
+            }
+        } finally {
+            mutationLock.readLock().unlock();
+        }
+        return results;
     }
 
     public Set<Visibility> getHiddenVisibilities() {

@@ -3,6 +3,7 @@ package org.vertexium;
 import org.vertexium.util.ConvertingIterable;
 
 import java.util.Iterator;
+import java.util.Set;
 
 public interface VertexiumObject extends Comparable {
     /**
@@ -15,6 +16,11 @@ public interface VertexiumObject extends Comparable {
      * used to retrieve the element.
      */
     Iterable<Property> getProperties();
+
+    /**
+     * Set of all additional visibilities on this object
+     */
+    Set<String> getAdditionalVisibilities();
 
     /**
      * Gets a property by name. This assumes a single valued property. If multiple property values exists this will only return the first one.

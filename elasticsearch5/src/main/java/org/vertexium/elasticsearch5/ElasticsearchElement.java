@@ -7,6 +7,7 @@ import org.vertexium.historicalEvent.HistoricalEventId;
 import org.vertexium.mutation.ExistingElementMutation;
 import org.vertexium.query.QueryableIterable;
 
+import java.util.Set;
 import java.util.stream.Stream;
 
 public abstract class ElasticsearchElement extends ElementBase {
@@ -288,12 +289,17 @@ public abstract class ElasticsearchElement extends ElementBase {
     }
 
     @Override
+    public Set<String> getAdditionalVisibilities() {
+        throw new VertexiumNotSupportedException("getAdditionalVisibilities is not supported");
+    }
+
+    @Override
     public ImmutableSet<String> getExtendedDataTableNames() {
         throw new VertexiumNotSupportedException("getExtendedDataTableNames is not supported");
     }
 
     @Override
-    public QueryableIterable<ExtendedDataRow> getExtendedData(String tableName) {
+    public QueryableIterable<ExtendedDataRow> getExtendedData(String tableName, FetchHints fetchHints) {
         throw new VertexiumNotSupportedException("getExtendedData is not supported");
     }
 

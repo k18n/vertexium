@@ -6,6 +6,7 @@ import org.vertexium.historicalEvent.HistoricalEventId;
 import org.vertexium.mutation.ExistingEdgeMutation;
 import org.vertexium.query.QueryableIterable;
 
+import java.util.Set;
 import java.util.stream.Stream;
 
 public class EdgeInfoEdge extends ElementBase implements Edge {
@@ -27,6 +28,11 @@ public class EdgeInfoEdge extends ElementBase implements Edge {
         this.edgeInfo = edgeInfo;
         this.fetchHints = fetchHints;
         this.authorizations = authorizations;
+    }
+
+    @Override
+    public ElementType getElementType() {
+        return ElementType.EDGE;
     }
 
     @Override
@@ -117,13 +123,18 @@ public class EdgeInfoEdge extends ElementBase implements Edge {
     }
 
     @Override
+    public Set<String> getAdditionalVisibilities() {
+        return getEdge().getAdditionalVisibilities();
+    }
+
+    @Override
     public ImmutableSet<String> getExtendedDataTableNames() {
         return getEdge().getExtendedDataTableNames();
     }
 
     @Override
-    public QueryableIterable<ExtendedDataRow> getExtendedData(String tableName) {
-        return getEdge().getExtendedData(tableName);
+    public QueryableIterable<ExtendedDataRow> getExtendedData(String tableName, FetchHints fetchHints) {
+        return getEdge().getExtendedData(tableName, fetchHints);
     }
 
     @Override
