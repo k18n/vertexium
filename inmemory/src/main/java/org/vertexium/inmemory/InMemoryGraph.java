@@ -351,9 +351,9 @@ public class InMemoryGraph extends GraphBase {
         Long timestamp,
         Visibility visibility,
         Object data,
-        Authorizations authorizations
+        User user
     ) {
-        if (!element.canRead(authorizations)) {
+        if (!element.canRead(user)) {
             return;
         }
 
@@ -364,10 +364,10 @@ public class InMemoryGraph extends GraphBase {
             timestamp,
             visibility,
             data,
-            authorizations
+            user
         );
 
-        getSearchIndex().markPropertyHidden(this, element, property, visibility, authorizations);
+        getSearchIndex().markPropertyHidden(this, element, property, visibility, user);
 
         if (hiddenProperty != null && hasEventListeners()) {
             fireGraphEvent(new MarkHiddenPropertyEvent(this, element, hiddenProperty, visibility, data));
@@ -383,9 +383,9 @@ public class InMemoryGraph extends GraphBase {
         Long timestamp,
         Visibility visibility,
         Object data,
-        Authorizations authorizations
+        User user
     ) {
-        if (!element.canRead(authorizations)) {
+        if (!element.canRead(user)) {
             return;
         }
 
@@ -396,10 +396,10 @@ public class InMemoryGraph extends GraphBase {
             timestamp,
             visibility,
             data,
-            authorizations
+            user
         );
 
-        getSearchIndex().markPropertyVisible(this, element, property, visibility, authorizations);
+        getSearchIndex().markPropertyVisible(this, element, property, visibility, user);
 
         if (property != null && hasEventListeners()) {
             fireGraphEvent(new MarkVisiblePropertyEvent(this, element, property, visibility, data));
@@ -800,7 +800,7 @@ public class InMemoryGraph extends GraphBase {
         Metadata metadata,
         Visibility visibility,
         Long timestamp,
-        Authorizations authorizations
+        User user
     ) {
         ensurePropertyDefined(name, value);
 
@@ -812,7 +812,7 @@ public class InMemoryGraph extends GraphBase {
             value = saveStreamingPropertyValue((StreamingPropertyValue) value);
         }
         inMemoryTableElement.appendAddPropertyValueMutation(key, name, value, metadata, visibility, timestamp, null);
-        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
+        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, user);
 
         if (hasEventListeners()) {
             fireGraphEvent(new AddPropertyEvent(this, element, property));
@@ -826,7 +826,7 @@ public class InMemoryGraph extends GraphBase {
     protected void alterElementPropertyVisibilities(
         InMemoryTableElement inMemoryTableElement,
         List<AlterPropertyVisibility> alterPropertyVisibilities,
-        Authorizations authorizations
+        User user
     ) {
         for (AlterPropertyVisibility apv : alterPropertyVisibilities) {
             Property property = inMemoryTableElement.getProperty(
@@ -834,7 +834,7 @@ public class InMemoryGraph extends GraphBase {
                 apv.getName(),
                 apv.getExistingVisibility(),
                 FetchHints.ALL_INCLUDING_HIDDEN,
-                authorizations
+                user
             );
             if (property == null) {
                 throw new VertexiumException("Could not find property " + apv.getKey() + ":" + apv.getName());
@@ -870,8 +870,9 @@ public class InMemoryGraph extends GraphBase {
     }
 
     protected void alterElementPropertyMetadata(
-        InMemoryTableElement inMemoryTableElement, List<SetPropertyMetadata> setPropertyMetadatas,
-        Authorizations authorizations
+        InMemoryTableElement inMemoryTableElement,
+        List<SetPropertyMetadata> setPropertyMetadatas,
+        User user
     ) {
         for (SetPropertyMetadata spm : setPropertyMetadatas) {
             Property property = inMemoryTableElement.getProperty(
@@ -879,7 +880,7 @@ public class InMemoryGraph extends GraphBase {
                 spm.getPropertyName(),
                 spm.getPropertyVisibility(),
                 FetchHints.ALL_INCLUDING_HIDDEN,
-                authorizations
+                user
             );
             if (property == null) {
                 throw new VertexiumException("Could not find property " + spm.getPropertyKey() + ":" + spm.getPropertyName());
@@ -932,12 +933,12 @@ public class InMemoryGraph extends GraphBase {
         String key,
         String name,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
-        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
-        inMemoryTableElement.deleteProperty(key, name, visibility, authorizations);
+        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, user);
+        inMemoryTableElement.deleteProperty(key, name, visibility, user);
 
-        getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), authorizations);
+        getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), user);
 
         if (hasEventListeners()) {
             fireGraphEvent(new DeletePropertyEvent(this, element, property));
