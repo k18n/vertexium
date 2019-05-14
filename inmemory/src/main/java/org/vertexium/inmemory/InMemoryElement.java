@@ -53,11 +53,18 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
     }
 
     @Override
+    public User getUser() {
+        return user;
+    }
+
+    @Override
+    @Deprecated
     public void deleteProperty(String key, String name, Visibility visibility, User user) {
         getGraph().deleteProperty(this, inMemoryTableElement, key, name, visibility, user);
     }
 
     @Override
+    @Deprecated
     public void softDeleteProperty(String key, String name, Visibility visibility, Object eventData, User user) {
         softDeleteProperty(key, name, null, visibility, eventData, IndexHint.INDEX, user);
     }
@@ -126,6 +133,7 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
     }
 
     @Override
+    @Deprecated
     public void markPropertyHidden(
         Property property,
         Long timestamp,
@@ -145,6 +153,7 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
     }
 
     @Override
+    @Deprecated
     public void markPropertyVisible(
         Property property,
         Long timestamp,
@@ -194,6 +203,7 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
     }
 
     @Override
+    @Deprecated
     public void markPropertyVisible(
         String key,
         String name,
