@@ -98,7 +98,7 @@ public class DefaultSearchIndex implements SearchIndex {
 
     @Override
     public org.vertexium.search.MultiVertexQuery queryGraph(Graph graph, String[] vertexIds, String queryString, User user) {
-        throw new VertexiumException("Not Yet Implemented");
+        return new DefaultMultiVertexQuery(graph, vertexIds, queryString, user);
     }
 
     @Override
