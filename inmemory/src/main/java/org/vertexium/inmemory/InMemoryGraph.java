@@ -644,7 +644,7 @@ public class InMemoryGraph extends GraphBase {
     }
 
     private Stream<InMemoryTableEdge> getInMemoryTableEdges() {
-        return stream(edges.getAllTableElements());
+        return edges.getAllTableElements();
     }
 
     private Stream<InMemoryTableEdge> getInMemoryTableEdgesForVertex(String vertexId, FetchHints fetchHints, User user) {
@@ -722,7 +722,7 @@ public class InMemoryGraph extends GraphBase {
         InMemoryTableElement inMemoryTableElement,
         String visibility,
         Object eventData,
-        Authorizations authorizations
+        User user
     ) {
         Element element;
         FetchHints fetchHints = new FetchHintsBuilder(FetchHints.ALL_INCLUDING_HIDDEN)
@@ -730,9 +730,9 @@ public class InMemoryGraph extends GraphBase {
             .build();
         inMemoryTableElement.appendAddAdditionalVisibilityMutation(visibility, eventData);
         if (inMemoryTableElement instanceof InMemoryTableVertex) {
-            element = getVertex(inMemoryTableElement.getId(), fetchHints, authorizations);
+            element = getVertex(inMemoryTableElement.getId(), fetchHints, user);
         } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
-            element = getEdge(inMemoryTableElement.getId(), fetchHints, authorizations);
+            element = getEdge(inMemoryTableElement.getId(), fetchHints, user);
         } else {
             throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
         }
@@ -745,7 +745,7 @@ public class InMemoryGraph extends GraphBase {
         InMemoryTableElement inMemoryTableElement,
         String visibility,
         Object eventData,
-        Authorizations authorizations
+        User user
     ) {
         Element element;
         FetchHints fetchHints = new FetchHintsBuilder(FetchHints.ALL_INCLUDING_HIDDEN)
@@ -753,9 +753,9 @@ public class InMemoryGraph extends GraphBase {
             .build();
         inMemoryTableElement.appendDeleteAdditionalVisibilityMutation(visibility, eventData);
         if (inMemoryTableElement instanceof InMemoryTableVertex) {
-            element = getVertex(inMemoryTableElement.getId(), fetchHints, authorizations);
+            element = getVertex(inMemoryTableElement.getId(), fetchHints, user);
         } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
-            element = getEdge(inMemoryTableElement.getId(), fetchHints, authorizations);
+            element = getEdge(inMemoryTableElement.getId(), fetchHints, user);
         } else {
             throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
         }
@@ -770,20 +770,20 @@ public class InMemoryGraph extends GraphBase {
         Long timestamp,
         Object data,
         IndexHint indexHint,
-        Authorizations authorizations
+        User user
     ) {
         Element element;
         if (inMemoryTableElement instanceof InMemoryTableVertex) {
             inMemoryTableElement.appendSoftDeletePropertyMutation(property.getKey(), property.getName(), property.getVisibility(), timestamp, data);
-            element = getVertex(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
+            element = getVertex(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
         } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
             inMemoryTableElement.appendSoftDeletePropertyMutation(property.getKey(), property.getName(), property.getVisibility(), timestamp, data);
-            element = getEdge(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, authorizations);
+            element = getEdge(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
         } else {
             throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
         }
         if (indexHint != IndexHint.DO_NOT_INDEX) {
-            getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), authorizations);
+            getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), user);
         }
 
         if (hasEventListeners()) {
@@ -953,9 +953,9 @@ public class InMemoryGraph extends GraphBase {
         ElementType elementType,
         String elementId,
         FetchHints fetchHints,
-        Authorizations authorizations
+        User user
     ) {
-        return extendedDataTable.getTableNames(elementType, elementId, fetchHints, authorizations);
+        return extendedDataTable.getTableNames(elementType, elementId, fetchHints, user);
     }
 
     public Iterable<? extends ExtendedDataRow> getExtendedDataTable(
@@ -963,16 +963,16 @@ public class InMemoryGraph extends GraphBase {
         String elementId,
         String tableName,
         FetchHints fetchHints,
-        Authorizations authorizations
+        User user
     ) {
-        return extendedDataTable.getTable(elementType, elementId, tableName, fetchHints, authorizations);
+        return extendedDataTable.getTable(elementType, elementId, tableName, fetchHints, user);
     }
 
     public void extendedData(
         Element element,
         ExtendedDataRowId rowId,
         ExtendedDataMutation extendedData,
-        Authorizations authorizations
+        User user
     ) {
         extendedDataTable.addData(rowId, extendedData.getColumnName(), extendedData.getKey(), extendedData.getValue(), extendedData.getTimestamp(), extendedData.getVisibility());
         getSearchIndex().addElementExtendedData(
@@ -981,7 +981,7 @@ public class InMemoryGraph extends GraphBase {
             Collections.singleton(extendedData),
             Collections.emptyList(),
             Collections.emptyList(),
-            authorizations
+            user
         );
         if (hasEventListeners()) {
             fireGraphEvent(new AddExtendedDataEvent(
@@ -1022,7 +1022,7 @@ public class InMemoryGraph extends GraphBase {
         String columnName,
         String key,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
         extendedDataTable.removeColumn(
             new ExtendedDataRowId(ElementType.getTypeFromElement(element), element.getId(), tableName, row),
@@ -1031,7 +1031,7 @@ public class InMemoryGraph extends GraphBase {
             visibility
         );
 
-        getSearchIndex().deleteExtendedData(this, element, tableName, row, columnName, key, visibility, authorizations);
+        getSearchIndex().deleteExtendedData(this, element, tableName, row, columnName, key, visibility, user);
         if (hasEventListeners()) {
             fireGraphEvent(new DeleteExtendedDataEvent(this, element, tableName, row, columnName, key));
         }
