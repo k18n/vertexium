@@ -1226,6 +1226,7 @@ public abstract class GraphTestBase {
         long beforeMarkPropertyVisibleTimestamp = t;
         t += 100;
 
+        v1 = graph.getVertex("v1", AUTHORIZATIONS_A_AND_B);
         v1.markPropertyVisible("key1", "firstName", VISIBILITY_A, t, VISIBILITY_B, AUTHORIZATIONS_A_AND_B);
         t += 100;
         properties = IterableUtils.toList(graph.getVertex("v1", AUTHORIZATIONS_A_AND_B).getProperties());
@@ -1543,10 +1544,10 @@ public abstract class GraphTestBase {
         assertFalse("v1 exists (auth A)", graph.doesVertexExist("v1", AUTHORIZATIONS_A));
         assertFalse("v1 exists (auth B)", graph.doesVertexExist("v1", AUTHORIZATIONS_B));
         assertFalse("v1 exists (auth A&B)", graph.doesVertexExist("v1", AUTHORIZATIONS_A_AND_B));
-        Assert.assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A_AND_B)));
-        Assert.assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A)));
-        Assert.assertEquals(0, count(graph.getVertices(AUTHORIZATIONS_B)));
-        Assert.assertEquals(0, count(graph.getEdges(AUTHORIZATIONS_A)));
+        assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A_AND_B)));
+        assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A)));
+        assertEquals(0, count(graph.getVertices(AUTHORIZATIONS_B)));
+        assertEquals(0, count(graph.getEdges(AUTHORIZATIONS_A)));
         assertNull("found v1 but shouldn't have", graph.getVertex("v1", graph.getDefaultFetchHints(), AUTHORIZATIONS_A));
         Vertex v1Hidden = graph.getVertex("v1", FetchHints.ALL_INCLUDING_HIDDEN, AUTHORIZATIONS_A);
         assertNotNull("did not find v1 but should have", v1Hidden);
@@ -1558,10 +1559,10 @@ public abstract class GraphTestBase {
         assertTrue("v1 exists (auth A)", graph.doesVertexExist("v1", AUTHORIZATIONS_A));
         assertFalse("v1 exists (auth B)", graph.doesVertexExist("v1", AUTHORIZATIONS_B));
         assertFalse("v1 exists (auth A&B)", graph.doesVertexExist("v1", AUTHORIZATIONS_A_AND_B));
-        Assert.assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A_AND_B)));
-        Assert.assertEquals(2, count(graph.getVertices(AUTHORIZATIONS_A)));
-        Assert.assertEquals(0, count(graph.getVertices(AUTHORIZATIONS_B)));
-        Assert.assertEquals(1, count(graph.getEdges(AUTHORIZATIONS_A)));
+        assertEquals(1, count(graph.getVertices(AUTHORIZATIONS_A_AND_B)));
+        assertEquals(2, count(graph.getVertices(AUTHORIZATIONS_A)));
+        assertEquals(0, count(graph.getVertices(AUTHORIZATIONS_B)));
+        assertEquals(1, count(graph.getEdges(AUTHORIZATIONS_A)));
 
         graph.markVertexVisible(v1, VISIBILITY_A_AND_B, AUTHORIZATIONS_A);
         graph.flush();
@@ -9403,7 +9404,7 @@ public abstract class GraphTestBase {
 
         List<HistoricalEvent> events = graph.getHistoricalEvents(Lists.newArrayList(ElementId.edge("e1")), AUTHORIZATIONS_ALL)
             .collect(Collectors.toList());
-        assertEquals(5, events.size());
+        assertEquals(6, events.size());
 
         assertTrue(events.get(0) instanceof HistoricalAddEdgeEvent);
         HistoricalAddEdgeEvent addEdgeEvent = (HistoricalAddEdgeEvent) events.get(0);
@@ -9432,8 +9433,15 @@ public abstract class GraphTestBase {
         assertEquals("v1", softDeleteEvent.getOutVertexId());
         assertEquals("v2", softDeleteEvent.getInVertexId());
 
-        assertTrue(events.get(4) instanceof HistoricalAddEdgeEvent);
-        addEdgeEvent = (HistoricalAddEdgeEvent) events.get(4);
+        assertTrue(events.get(4) instanceof HistoricalSoftDeletePropertyEvent);
+        HistoricalSoftDeletePropertyEvent softDeletePropertyEvent = (HistoricalSoftDeletePropertyEvent) events.get(4);
+        assertEquals("e1", softDeletePropertyEvent.getElementId());
+        assertEquals("k1", softDeletePropertyEvent.getPropertyKey());
+        assertEquals("prop1", softDeletePropertyEvent.getPropertyName());
+        assertEquals(VISIBILITY_A, softDeletePropertyEvent.getPropertyVisibility());
+
+        assertTrue(events.get(5) instanceof HistoricalAddEdgeEvent);
+        addEdgeEvent = (HistoricalAddEdgeEvent) events.get(5);
         assertEquals("e1", addEdgeEvent.getElementId());
 
         events = graph.getHistoricalEvents(Lists.newArrayList(ElementId.vertex("v1")), AUTHORIZATIONS_ALL)
