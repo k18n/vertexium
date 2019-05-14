@@ -7610,6 +7610,7 @@ public abstract class GraphTestBase {
 
         v = getGraph().getVertex("v1", AUTHORIZATIONS_A_AND_B);
         rows = toList(v.getExtendedData("table1"));
+        assertSet(rows.get(0).getAdditionalVisibilities(), VISIBILITY_B_STRING);
         assertRowIdsAnyOrder(rows, "row1");
 
         queryResults = graph.query(AUTHORIZATIONS_A_AND_B).extendedDataRows();
@@ -7640,6 +7641,7 @@ public abstract class GraphTestBase {
 
         v = getGraph().getVertex("v1", AUTHORIZATIONS_A_AND_B_AND_C);
         rows = toList(v.getExtendedData("table1"));
+        assertSet(rows.get(0).getAdditionalVisibilities(), VISIBILITY_B_STRING, VISIBILITY_C_STRING);
         assertRowIdsAnyOrder(rows, "row1");
 
         queryResults = graph.query(AUTHORIZATIONS_A_AND_B_AND_C).extendedDataRows();
@@ -7663,7 +7665,7 @@ public abstract class GraphTestBase {
 
         v = getGraph().getVertex("v1", AUTHORIZATIONS_A);
         rows = toList(v.getExtendedData("table1"));
-        assertEquals(0, rows.size());
+        assertRowIdsAnyOrder(rows);
 
         queryResults = graph.query(AUTHORIZATIONS_A).extendedDataRows();
         assertRowIdsAnyOrder(queryResults);
@@ -7693,6 +7695,7 @@ public abstract class GraphTestBase {
 
         v = getGraph().getVertex("v1", AUTHORIZATIONS_A);
         rows = toList(v.getExtendedData("table1"));
+        assertSet(rows.get(0).getAdditionalVisibilities());
         assertRowIdsAnyOrder(rows, "row1");
 
         queryResults = graph.query(AUTHORIZATIONS_A).extendedDataRows();

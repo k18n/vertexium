@@ -1,5 +1,6 @@
 package org.vertexium;
 
+import com.google.common.collect.ImmutableSet;
 import org.vertexium.util.ConvertingIterable;
 
 import java.util.Iterator;
@@ -20,7 +21,7 @@ public interface VertexiumObject extends Comparable {
     /**
      * Set of all additional visibilities on this object
      */
-    Set<String> getAdditionalVisibilities();
+    ImmutableSet<String> getAdditionalVisibilities();
 
     /**
      * Gets a property by name. This assumes a single valued property. If multiple property values exists this will only return the first one.

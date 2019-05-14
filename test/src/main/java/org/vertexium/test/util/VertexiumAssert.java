@@ -11,8 +11,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static junit.framework.TestCase.fail;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.*;
 import static org.vertexium.util.IterableUtils.toList;
 import static org.vertexium.util.StreamUtils.stream;
 
@@ -122,6 +121,13 @@ public class VertexiumAssert {
 
     public static void clearGraphEvents() {
         graphEvents.clear();
+    }
+
+    public static <T> void assertSet(Set<T> set, T... values) {
+        assertEquals("size mismatch", values.length, set.size());
+        for (T value : values) {
+            assertTrue("set missing " + value, set.contains(value));
+        }
     }
 
     public static void assertRowIdsAnyOrder(Iterable<ExtendedDataRow> rows, String... expectedRowIds) {

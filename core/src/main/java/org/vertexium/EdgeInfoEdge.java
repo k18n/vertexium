@@ -123,7 +123,7 @@ public class EdgeInfoEdge extends ElementBase implements Edge {
     }
 
     @Override
-    public Set<String> getAdditionalVisibilities() {
+    public ImmutableSet<String> getAdditionalVisibilities() {
         return getEdge().getAdditionalVisibilities();
     }
 
