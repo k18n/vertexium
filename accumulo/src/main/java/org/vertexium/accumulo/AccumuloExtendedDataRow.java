@@ -1,5 +1,6 @@
 package org.vertexium.accumulo;
 
+import com.google.common.collect.ImmutableSet;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 import org.apache.hadoop.io.Text;
@@ -84,8 +85,8 @@ public class AccumuloExtendedDataRow extends ExtendedDataRowBase {
     }
 
     @Override
-    public Set<String> getAdditionalVisibilities() {
-        return additionalVisibilities;
+    public ImmutableSet<String> getAdditionalVisibilities() {
+        return ImmutableSet.copyOf(additionalVisibilities);
     }
 
     private static class AccumuloExtendedDataRowProperty extends Property {

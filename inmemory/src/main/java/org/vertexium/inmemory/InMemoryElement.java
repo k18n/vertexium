@@ -447,7 +447,7 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
     }
 
     @Override
-    public Set<String> getAdditionalVisibilities() {
+    public ImmutableSet<String> getAdditionalVisibilities() {
         return inMemoryTableElement.getAdditionalVisibilities();
     }
 

@@ -440,8 +440,8 @@ public abstract class AccumuloElement extends ElementBase implements Serializabl
     }
 
     @Override
-    public Set<String> getAdditionalVisibilities() {
-        return additionalVisibilities;
+    public ImmutableSet<String> getAdditionalVisibilities() {
+        return ImmutableSet.copyOf(additionalVisibilities);
     }
 
     @Override

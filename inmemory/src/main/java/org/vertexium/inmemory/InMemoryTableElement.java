@@ -1,6 +1,7 @@
 package org.vertexium.inmemory;
 
 import com.google.common.base.Joiner;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import org.vertexium.*;
 import org.vertexium.historicalEvent.*;
@@ -754,7 +755,7 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
         return new Visibility(visibilityString);
     }
 
-    public Set<String> getAdditionalVisibilities() {
+    public ImmutableSet<String> getAdditionalVisibilities() {
         Set<String> results = new HashSet<>();
 
         mutationLock.readLock().lock();
@@ -769,7 +770,7 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
         } finally {
             mutationLock.readLock().unlock();
         }
-        return results;
+        return ImmutableSet.copyOf(results);
     }
 
     public Set<Visibility> getHiddenVisibilities() {

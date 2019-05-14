@@ -1,11 +1,13 @@
 package org.vertexium.inmemory;
 
+import com.google.common.collect.ImmutableSet;
 import org.vertexium.*;
 import org.vertexium.security.ColumnVisibility;
 import org.vertexium.security.VisibilityEvaluator;
 import org.vertexium.security.VisibilityParseException;
+import org.vertexium.util.StreamUtils;
 
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -53,6 +55,7 @@ public class InMemoryExtendedDataRow extends ExtendedDataRowBase {
                     row.properties.add(column);
                 }
             }
+            row.additionalVisibilities.addAll(additionalVisibilities);
             return row;
         } finally {
             propertiesLock.readLock().unlock();
@@ -134,16 +137,10 @@ public class InMemoryExtendedDataRow extends ExtendedDataRowBase {
     }
 
     @Override
-    public Set<String> getAdditionalVisibilities() {
+    public ImmutableSet<String> getAdditionalVisibilities() {
         return additionalVisibilities.stream()
-            .map(av -> {
-                try {
-                    return new String(av.getExpression(), "utf8");
-                } catch (UnsupportedEncodingException ex) {
-                    throw new VertexiumException("Could not decode visibility", ex);
-                }
-            })
-            .collect(Collectors.toSet());
+            .map(av -> new String(av.getExpression(), StandardCharsets.UTF_8))
+            .collect(StreamUtils.toImmutableSet());
     }
 
     private static class InMemoryProperty extends Property {
