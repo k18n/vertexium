@@ -35,16 +35,11 @@ import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.PluginInfo;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.ScriptType;
 import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.aggregations.Aggregation;
-import org.elasticsearch.search.aggregations.AggregationBuilders;
-import org.elasticsearch.search.aggregations.bucket.terms.Terms;
-import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
 import org.vertexium.Edge;
 import org.vertexium.*;
@@ -54,7 +49,6 @@ import org.vertexium.mutation.*;
 import org.vertexium.property.StreamingPropertyValue;
 import org.vertexium.query.*;
 import org.vertexium.search.SearchIndex;
-import org.vertexium.search.SearchIndexWithVertexPropertyCountByValue;
 import org.vertexium.type.*;
 import org.vertexium.util.*;
 
@@ -78,7 +72,7 @@ import static org.vertexium.elasticsearch5.utils.SearchResponseUtils.checkForFai
 import static org.vertexium.util.Preconditions.checkNotNull;
 import static org.vertexium.util.StreamUtils.stream;
 
-public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVertexPropertyCountByValue {
+public class Elasticsearch5SearchIndex implements SearchIndex {
     private static final VertexiumLogger LOGGER = VertexiumLoggerFactory.getLogger(Elasticsearch5SearchIndex.class);
     protected static final VertexiumLogger MUTATION_LOGGER = VertexiumLoggerFactory.getMutationLogger(SearchIndex.class);
     public static final String ELEMENT_ID_FIELD_NAME = "__elementId";
@@ -348,7 +342,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void addElement(Graph graph, Element element, Authorizations authorizations) {
+    public void addElement(Graph graph, Element element, User user) {
         if (MUTATION_LOGGER.isTraceEnabled()) {
             MUTATION_LOGGER.trace("addElement: %s", element.getId());
         }
@@ -373,7 +367,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     public <TElement extends Element> void updateElement(
         Graph graph,
         ExistingElementMutation<TElement> elementMutation,
-        Authorizations authorizations
+        User user
     ) {
         TElement element = elementMutation.getElement();
 
@@ -500,7 +494,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     private <TElement extends Element> Map<String, String> getFieldVisibilityChanges(Graph graph, ExistingElementMutation<TElement> mutation) {
         Map<String, String> fieldVisibilityChanges = new HashMap<>();
 
-        mutation.getAlterPropertyVisibilities().stream()
+        stream(mutation.getAlterPropertyVisibilities())
             .filter(p -> p.getExistingVisibility() != null && !p.getExistingVisibility().equals(p.getVisibility()))
             .forEach(p -> {
                 String oldFieldName = addVisibilityToPropertyName(graph, p.getName(), p.getExistingVisibility());
@@ -546,7 +540,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     private <TElement extends Element> IndexInfo addMutationPropertiesToIndex(Graph graph, ExistingElementMutation<TElement> mutation) {
         TElement element = mutation.getElement();
         IndexInfo indexInfo = addPropertiesToIndex(graph, element, mutation.getProperties());
-        mutation.getAlterPropertyVisibilities().stream()
+        stream(mutation.getAlterPropertyVisibilities())
             .filter(p -> p.getExistingVisibility() != null && !p.getExistingVisibility().equals(p.getVisibility()))
             .forEach(p -> {
                 PropertyDefinition propertyDefinition = getPropertyDefinition(graph, p.getName());
@@ -625,7 +619,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Iterable<ExtendedDataMutation> extendedData,
         Iterable<AdditionalExtendedDataVisibilityAddMutation> additionalExtendedDataVisibilities,
         Iterable<AdditionalExtendedDataVisibilityDeleteMutation> additionalExtendedDataVisibilityDeletes,
-        Authorizations authorizations
+        User user
     ) {
         Map<String, Map<String, ExtendedDataMutationUtils.Mutations>> byTableThenRowId = ExtendedDataMutationUtils.getByTableThenRowId(
             extendedData,
@@ -654,7 +648,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void deleteExtendedData(Graph graph, ExtendedDataRowId rowId, Authorizations authorizations) {
+    public void deleteExtendedData(Graph graph, ExtendedDataRowId rowId, User user) {
         String indexName = getExtendedDataIndexName(rowId);
         String docId = getIdStrategy().createExtendedDataDocId(rowId);
         getIndexRefreshTracker().pushChange(indexName);
@@ -670,7 +664,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         String columnName,
         String key,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
         String extendedDataDocId = getIdStrategy().createExtendedDataDocId(elementLocation, tableName, row);
         String fieldName = addVisibilityToPropertyName(graph, columnName, visibility);
@@ -770,7 +764,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Graph graph,
         ElementLocation elementLocation,
         Iterable<ExtendedDataRow> extendedDatas,
-        Authorizations authorizations
+        User user
     ) {
         Map<ElementType, Map<String, List<ExtendedDataRow>>> rowsByElementTypeAndId = mapExtendedDatasByElementTypeByElementId(extendedDatas);
         rowsByElementTypeAndId.forEach((elementType, elements) -> {
@@ -983,13 +977,13 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         ExistingElementMutation<T> elementMutation,
         Visibility oldVisibility,
         Visibility newVisibility,
-        Authorizations authorizations
+        User user
     ) {
         // Remove old element field name
         String oldFieldName = addVisibilityToPropertyName(graph, ELEMENT_TYPE_FIELD_NAME, oldVisibility);
         removeFieldsFromDocument(graph, elementMutation, oldFieldName);
 
-        addElement(graph, elementMutation.getElement(), authorizations);
+        addElement(graph, elementMutation.getElement(), user);
     }
 
     private XContentBuilder buildJsonContentFromElement(Graph graph, Element element) throws IOException {
@@ -1039,7 +1033,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Element element,
         String visibility,
         Object eventData,
-        Authorizations authorizations
+        User user
     ) {
         String indexName = getIndexName(element);
         String documentId = getIdStrategy().createElementDocId(element);
@@ -1068,7 +1062,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Element element,
         String visibility,
         Object eventData,
-        Authorizations authorizations
+        User user
     ) {
         String indexName = getIndexName(element);
         String documentId = getIdStrategy().createElementDocId(element);
@@ -1092,7 +1086,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void markElementHidden(Graph graph, Element element, Visibility visibility, Authorizations authorizations) {
+    public void markElementHidden(Graph graph, Element element, Visibility visibility, User user) {
         try {
             String hiddenVisibilityPropertyName = addVisibilityToPropertyName(graph, HIDDEN_VERTEX_FIELD_NAME, visibility);
             String indexName = getIndexName(element);
@@ -1122,7 +1116,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         Graph graph,
         ElementLocation elementLocation,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
         String hiddenVisibilityPropertyName = addVisibilityToPropertyName(graph, HIDDEN_VERTEX_FIELD_NAME, visibility);
         if (isPropertyInIndex(graph, HIDDEN_VERTEX_FIELD_NAME, visibility)) {
@@ -1136,7 +1130,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         ElementLocation elementLocation,
         Property property,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
         try {
             String hiddenVisibilityPropertyName = addVisibilityToPropertyName(graph, HIDDEN_PROPERTY_FIELD_NAME, visibility);
@@ -1167,7 +1161,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         ElementLocation elementLocation,
         Property property,
         Visibility visibility,
-        Authorizations authorizations
+        User user
     ) {
         String hiddenVisibilityPropertyName = addVisibilityToPropertyName(graph, HIDDEN_PROPERTY_FIELD_NAME, visibility);
         if (isPropertyInIndex(graph, HIDDEN_PROPERTY_FIELD_NAME, visibility)) {
@@ -1429,7 +1423,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return fieldName.replace(".", FIELDNAME_DOT_REPLACEMENT);
     }
 
-    public String[] getAllMatchingPropertyNames(Graph graph, String propertyName, Authorizations authorizations) {
+    public String[] getAllMatchingPropertyNames(Graph graph, String propertyName, User user) {
         if (Element.ID_PROPERTY_NAME.equals(propertyName)
             || Edge.LABEL_PROPERTY_NAME.equals(propertyName)
             || Edge.OUT_VERTEX_ID_PROPERTY_NAME.equals(propertyName)
@@ -1437,7 +1431,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
             || Edge.IN_OR_OUT_VERTEX_ID_PROPERTY_NAME.equals(propertyName)) {
             return new String[]{propertyName};
         }
-        Collection<String> hashes = this.propertyNameVisibilitiesStore.getHashes(graph, propertyName, authorizations);
+        Collection<String> hashes = this.propertyNameVisibilitiesStore.getHashes(graph, propertyName, user);
         return addHashesToPropertyName(propertyName, hashes);
     }
 
@@ -1453,22 +1447,22 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return results;
     }
 
-    public Collection<String> getQueryableExtendedDataVisibilities(Graph graph, Authorizations authorizations) {
-        return propertyNameVisibilitiesStore.getHashes(graph, authorizations);
+    public Collection<String> getQueryableExtendedDataVisibilities(Graph graph, User user) {
+        return propertyNameVisibilitiesStore.getHashes(graph, user);
     }
 
-    public Collection<String> getQueryableElementTypeVisibilityPropertyNames(Graph graph, Authorizations authorizations) {
+    public Collection<String> getQueryableElementTypeVisibilityPropertyNames(Graph graph, User user) {
         Set<String> propertyNames = new HashSet<>();
-        for (String hash : propertyNameVisibilitiesStore.getHashes(graph, ELEMENT_TYPE_FIELD_NAME, authorizations)) {
+        for (String hash : propertyNameVisibilitiesStore.getHashes(graph, ELEMENT_TYPE_FIELD_NAME, user)) {
             propertyNames.add(ELEMENT_TYPE_FIELD_NAME + "_" + hash);
         }
         if (propertyNames.size() == 0) {
-            throw new VertexiumNoMatchingPropertiesException("No queryable " + ELEMENT_TYPE_FIELD_NAME + " for authorizations " + authorizations);
+            throw new VertexiumNoMatchingPropertiesException("No queryable " + ELEMENT_TYPE_FIELD_NAME + " for authorizations " + user);
         }
         return propertyNames;
     }
 
-    public Collection<String> getQueryablePropertyNames(Graph graph, Authorizations authorizations) {
+    public Collection<String> getQueryablePropertyNames(Graph graph, User user) {
         Set<String> propertyNames = new HashSet<>();
         for (PropertyDefinition propertyDefinition : graph.getPropertyDefinitions()) {
             List<String> queryableTypeSuffixes = getQueryableTypeSuffixes(propertyDefinition);
@@ -1479,7 +1473,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
             if (isReservedFieldName(propertyNameNoVisibility)) {
                 continue;
             }
-            for (String hash : propertyNameVisibilitiesStore.getHashes(graph, propertyNameNoVisibility, authorizations)) {
+            for (String hash : propertyNameVisibilitiesStore.getHashes(graph, propertyNameNoVisibility, user)) {
                 for (String typeSuffix : queryableTypeSuffixes) {
                     propertyNames.add(propertyNameNoVisibility + "_" + hash + typeSuffix);
                 }
@@ -1512,7 +1506,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void deleteElement(Graph graph, Element element, Authorizations authorizations) {
+    public void deleteElement(Graph graph, Element element, User user) {
         deleteExtendedDataForElement(element);
 
         String indexName = getIndexName(element);
@@ -1852,53 +1846,6 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         indexInfo.addPropertyNameVisibility(propertyName, propertyVisibility);
     }
 
-    @Override
-    @Deprecated
-    public Map<Object, Long> getVertexPropertyCountByValue(Graph graph, String propertyName, Authorizations authorizations) {
-        indexRefreshTracker.refresh(client);
-
-        TermQueryBuilder elementTypeFilterBuilder = new TermQueryBuilder(ELEMENT_TYPE_FIELD_NAME, ElasticsearchDocumentType.VERTEX.getKey());
-        BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery()
-            .must(QueryBuilders.matchAllQuery())
-            .filter(elementTypeFilterBuilder);
-        SearchRequestBuilder q = getClient().prepareSearch(getIndexNamesAsArray(graph))
-            .setQuery(queryBuilder)
-            .setSize(0);
-
-        for (String p : getAllMatchingPropertyNames(graph, propertyName, authorizations)) {
-            String countAggName = "count-" + p;
-            PropertyDefinition propertyDefinition = getPropertyDefinition(graph, p);
-            p = replaceFieldnameDots(p);
-            if (propertyDefinition != null && propertyDefinition.getTextIndexHints().contains(TextIndexHint.EXACT_MATCH)) {
-                p = p + EXACT_MATCH_PROPERTY_NAME_SUFFIX;
-            }
-
-            TermsAggregationBuilder countAgg = AggregationBuilders
-                .terms(countAggName)
-                .field(p)
-                .size(500000);
-            q = q.addAggregation(countAgg);
-        }
-
-        if (ElasticsearchSearchQueryBase.QUERY_LOGGER.isTraceEnabled()) {
-            ElasticsearchSearchQueryBase.QUERY_LOGGER.trace("query: %s", q);
-        }
-        SearchResponse response = checkForFailures(getClient().search(q.request()).actionGet());
-        Map<Object, Long> results = new HashMap<>();
-        for (Aggregation agg : response.getAggregations().asList()) {
-            Terms propertyCountResults = (Terms) agg;
-            for (Terms.Bucket propertyCountResult : propertyCountResults.getBuckets()) {
-                String mapKey = ((String) propertyCountResult.getKey()).toLowerCase();
-                Long previousValue = results.get(mapKey);
-                if (previousValue == null) {
-                    previousValue = 0L;
-                }
-                results.put(mapKey, previousValue + propertyCountResult.getDocCount());
-            }
-        }
-        return results;
-    }
-
     public IndexInfo ensureIndexCreatedAndInitialized(String indexName) {
         Map<String, IndexInfo> indexInfos = getIndexInfos();
         IndexInfo indexInfo = indexInfos.get(indexName);
@@ -1986,12 +1933,12 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void deleteProperty(Graph graph, Element element, PropertyDescriptor property, Authorizations authorizations) {
-        deleteProperties(graph, element, Collections.singletonList(property), authorizations);
+    public void deleteProperty(Graph graph, Element element, PropertyDescriptor property, User user) {
+        deleteProperties(graph, element, Collections.singletonList(property), user);
     }
 
     @Override
-    public void deleteProperties(Graph graph, Element element, Collection<PropertyDescriptor> propertyList, Authorizations authorizations) {
+    public void deleteProperties(Graph graph, Element element, Collection<PropertyDescriptor> propertyList, User user) {
         List<String> fieldsToRemove = new ArrayList<>();
         Map<String, Object> fieldsToSet = new HashMap<>();
         propertyList.forEach(p -> {
@@ -2023,7 +1970,7 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
     }
 
     @Override
-    public void addElements(Graph graph, Iterable<? extends Element> elements, Authorizations authorizations) {
+    public void addElements(Graph graph, Iterable<? extends Element> elements, User user) {
         bulkUpdate(graph, new ConvertingIterable<Element, UpdateRequest>(elements) {
             @Override
             protected UpdateRequest convert(Element element) {
@@ -2587,11 +2534,11 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         }
     }
 
-    public QueryBuilder getAdditionalVisibilitiesFilter(Authorizations authorizations) {
+    public QueryBuilder getAdditionalVisibilitiesFilter(User user) {
         BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
         for (GraphMetadataEntry metadata : graph.getMetadataWithPrefix(ADDITIONAL_VISIBILITY_METADATA_PREFIX)) {
             String visibilityString = (String) metadata.getValue();
-            if (!authorizations.canRead(new Visibility(visibilityString))) {
+            if (!user.canRead(new Visibility(visibilityString))) {
                 boolQuery.mustNot(QueryBuilders.termQuery(ADDITIONAL_VISIBILITY_FIELD_NAME, visibilityString));
             }
         }
@@ -2618,11 +2565,36 @@ public class Elasticsearch5SearchIndex implements SearchIndex, SearchIndexWithVe
         return false;
     }
 
-    public String[] getPropertyNames(Graph graph, String propertyName, Authorizations authorizations) {
-        String[] allMatchingPropertyNames = getAllMatchingPropertyNames(graph, propertyName, authorizations);
+    public String[] getPropertyNames(Graph graph, String propertyName, User user) {
+        String[] allMatchingPropertyNames = getAllMatchingPropertyNames(graph, propertyName, user);
         return Arrays.stream(allMatchingPropertyNames)
             .map(this::replaceFieldnameDots)
             .collect(Collectors.toList())
             .toArray(new String[allMatchingPropertyNames.length]);
+    }
+
+    @Override
+    public org.vertexium.search.GraphQuery queryGraph(Graph graph, String queryString, User user) {
+        throw new VertexiumException("not implemented");
+    }
+
+    @Override
+    public org.vertexium.search.MultiVertexQuery queryGraph(Graph graph, String[] vertexIds, String queryString, User user) {
+        throw new VertexiumException("not implemented");
+    }
+
+    @Override
+    public org.vertexium.search.VertexQuery queryVertex(Graph graph, Vertex vertex, String queryString, User user) {
+        throw new VertexiumException("not implemented");
+    }
+
+    @Override
+    public org.vertexium.search.Query queryExtendedData(Graph graph, Element element, String tableName, String queryString, User user) {
+        throw new VertexiumException("not implemented");
+    }
+
+    @Override
+    public org.vertexium.search.SimilarToGraphQuery querySimilarTo(Graph graph, String[] fields, String text, User user) {
+        throw new VertexiumException("not implemented");
     }
 }
