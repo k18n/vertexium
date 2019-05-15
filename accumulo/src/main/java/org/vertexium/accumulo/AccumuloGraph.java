@@ -1,9 +1,7 @@
 package org.vertexium.accumulo;
 
-import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.*;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
@@ -32,8 +30,6 @@ import org.vertexium.*;
 import org.vertexium.accumulo.iterator.*;
 import org.vertexium.accumulo.iterator.model.EdgeInfo;
 import org.vertexium.accumulo.iterator.model.IteratorFetchHints;
-import org.vertexium.accumulo.iterator.model.PropertyColumnQualifier;
-import org.vertexium.accumulo.iterator.model.PropertyMetadataColumnQualifier;
 import org.vertexium.accumulo.iterator.util.ByteArrayWrapper;
 import org.vertexium.accumulo.iterator.util.ByteSequenceUtils;
 import org.vertexium.accumulo.keys.KeyHelper;
@@ -58,6 +54,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.vertexium.VertexiumObjectType.getTypeFromElement;
 import static org.vertexium.util.IterableUtils.singleOrDefault;
 import static org.vertexium.util.IterableUtils.toList;
 import static org.vertexium.util.Preconditions.checkNotNull;
@@ -112,12 +109,12 @@ public class AccumuloGraph extends GraphBase implements Traceable {
         this.streamingPropertyValueStorageStrategy = config.createStreamingPropertyValueStorageStrategy(this);
         this.elementMutationBuilder = new ElementMutationBuilder(streamingPropertyValueStorageStrategy, vertexiumSerializer) {
             @Override
-            protected void saveVertexMutation(Mutation m) {
+            protected void saveVertexMutations(Mutation... m) {
                 addMutations(VertexiumObjectType.VERTEX, m);
             }
 
             @Override
-            protected void saveEdgeMutation(Mutation m) {
+            protected void saveEdgeMutations(Mutation... m) {
                 addMutations(VertexiumObjectType.EDGE, m);
             }
 
@@ -337,7 +334,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
                 trace.data("vertexId", finalVertexId);
                 try {
                     // This has to occur before createVertex since it will mutate the properties
-                    getElementMutationBuilder().saveVertexBuilder(AccumuloGraph.this, this, timestampLong);
+                    getElementMutationBuilder().saveVertexMutation(AccumuloGraph.this, this, timestampLong);
 
                     AccumuloVertex vertex = createVertex(user);
 
@@ -590,7 +587,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
     }
 
     protected void addMutations(Element element, Mutation... mutations) {
-        addMutations(VertexiumObjectType.getTypeFromElement(element), mutations);
+        addMutations(getTypeFromElement(element), mutations);
     }
 
     protected void addMutations(VertexiumObjectType objectType, Mutation... mutations) {
@@ -679,23 +676,43 @@ public class AccumuloGraph extends GraphBase implements Traceable {
         return getVerticesInRange(trace, null, null, fetchHints, endTime, user);
     }
 
-    @Override
-    public void deleteVertex(Vertex vertex, User user) {
-        checkNotNull(vertex, "vertex cannot be null");
-        Span trace = Trace.start("deleteVertex");
-        trace.data("vertexId", vertex.getId());
+    void deleteElement(Element element, User user) {
+        checkNotNull(element, "element cannot be null");
+        VertexiumObjectType elementType = getTypeFromElement(element);
+
+        Span trace = Trace.start("deleteElement");
+        trace.data("elementType", elementType.name());
+        trace.data("elementId", element.getId());
         try {
-            getSearchIndex().deleteElement(this, vertex, user);
+            GraphEvent deleteEvent;
 
-            // Delete all edges that this vertex participates.
-            vertex.getEdges(Direction.BOTH, user).forEach(edge -> deleteEdge(edge, user));
+            if (elementType == VertexiumObjectType.EDGE) {
+                Edge edge = (Edge) element;
 
-            deleteAllExtendedDataForElement(vertex, user);
+                ColumnVisibility visibility = visibilityToAccumuloVisibility(edge.getVisibility());
 
-            addMutations(VertexiumObjectType.VERTEX, elementMutationBuilder.getDeleteRowMutation(vertex.getId()));
+                Mutation outMutation = new Mutation(edge.getVertexId(Direction.OUT));
+                outMutation.putDelete(AccumuloVertex.CF_OUT_EDGE, new Text(edge.getId()), visibility);
 
+                Mutation inMutation = new Mutation(edge.getVertexId(Direction.IN));
+                inMutation.putDelete(AccumuloVertex.CF_IN_EDGE, new Text(edge.getId()), visibility);
+
+                addMutations(VertexiumObjectType.VERTEX, outMutation, inMutation);
+
+                deleteEvent = new DeleteEdgeEvent(this, edge);
+            } else if (elementType == VertexiumObjectType.VERTEX) {
+                Vertex vertex = (Vertex) element;
+                vertex.getEdges(Direction.BOTH, user).forEach(edge -> deleteElement(edge, user));
+                deleteEvent = new DeleteVertexEvent(this, vertex);
+            } else {
+                throw new VertexiumException("Unsupported object type: " + elementType.name());
+            }
+
+            deleteAllExtendedDataForElement(element, user);
+            addMutations(elementType, elementMutationBuilder.getDeleteRowMutation(element.getId()));
+            getSearchIndex().deleteElement(this, element, user);
             if (hasEventListeners()) {
-                queueEvent(new DeleteVertexEvent(this, vertex));
+                queueEvent(deleteEvent);
             }
         } finally {
             trace.stop();
@@ -818,7 +835,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
                 trace.data("edgeId", finalEdgeId);
                 try {
                     // This has to occur before createEdge since it will mutate the properties
-                    elementMutationBuilder.saveEdgeBuilder(AccumuloGraph.this, this, timestampLong);
+                    elementMutationBuilder.saveEdgeMutation(AccumuloGraph.this, this, timestampLong);
 
                     AccumuloEdge edge = AccumuloGraph.this.createEdge(
                             AccumuloGraph.this,
@@ -888,7 +905,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
                     };
 
                     // This has to occur before createEdge since it will mutate the properties
-                    elementMutationBuilder.saveEdgeBuilder(AccumuloGraph.this, this, timestampLong);
+                    elementMutationBuilder.saveEdgeMutation(AccumuloGraph.this, this, timestampLong);
 
                     AccumuloEdge edge = createEdge(
                         AccumuloGraph.this,
@@ -1207,33 +1224,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
     @Override
     public void deleteEdge(Edge edge, Authorizations authorizations) {
-        checkNotNull(edge);
-        Span trace = Trace.start("deleteEdge");
-        trace.data("edgeId", edge.getId());
-        try {
-            getSearchIndex().deleteElement(this, edge, authorizations);
-
-            ColumnVisibility visibility = visibilityToAccumuloVisibility(edge.getVisibility());
-
-            Mutation outMutation = new Mutation(edge.getVertexId(Direction.OUT));
-            outMutation.putDelete(AccumuloVertex.CF_OUT_EDGE, new Text(edge.getId()), visibility);
-
-            Mutation inMutation = new Mutation(edge.getVertexId(Direction.IN));
-            inMutation.putDelete(AccumuloVertex.CF_IN_EDGE, new Text(edge.getId()), visibility);
-
-            addMutations(VertexiumObjectType.VERTEX, outMutation, inMutation);
-
-            deleteAllExtendedDataForElement(edge, authorizations);
-
-            // Deletes everything else related to edge.
-            addMutations(VertexiumObjectType.EDGE, elementMutationBuilder.getDeleteRowMutation(edge.getId()));
-
-            if (hasEventListeners()) {
-                queueEvent(new DeleteEdgeEvent(this, edge));
-            }
-        } finally {
-            trace.stop();
-        }
+        deleteElement(edge, authorizations.getUser());
     }
 
     @Override
@@ -2113,10 +2104,6 @@ public class AccumuloGraph extends GraphBase implements Traceable {
         } finally {
             trace.stop();
         }
-    }
-
-    public void alterEdgeLabel(AccumuloEdge edge, String newEdgeLabel) {
-        elementMutationBuilder.alterEdgeLabel(edge, newEdgeLabel);
     }
 
     void alterElementPropertyVisibilities(AccumuloElement element, Iterable<AlterPropertyVisibility> alterPropertyVisibilities) {
