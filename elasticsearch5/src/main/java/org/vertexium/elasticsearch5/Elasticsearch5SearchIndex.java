@@ -66,10 +66,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.elasticsearch.common.geo.builders.ShapeBuilder.*;
 import static org.vertexium.elasticsearch5.ElasticsearchPropertyNameInfo.PROPERTY_NAME_PATTERN;
 import static org.vertexium.elasticsearch5.utils.SearchResponseUtils.checkForFailures;
-import static org.vertexium.util.Preconditions.checkNotNull;
 import static org.vertexium.util.StreamUtils.stream;
 
 public class Elasticsearch5SearchIndex implements SearchIndex {
