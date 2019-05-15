@@ -9,7 +9,6 @@ import org.vertexium.property.MutablePropertyImpl;
 import org.vertexium.property.StreamingPropertyValue;
 import org.vertexium.property.StreamingPropertyValueRef;
 import org.vertexium.util.IncreasingTime;
-import org.vertexium.util.LookAheadIterable;
 
 import java.io.Serializable;
 import java.time.ZonedDateTime;
@@ -21,6 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public abstract class InMemoryTableElement<TElement extends InMemoryElement> implements Serializable {
+    private static final long serialVersionUID = -437237206393541404L;
     private final String id;
     private ReadWriteLock mutationLock = new ReentrantReadWriteLock();
     protected final TreeSet<Mutation> mutations = new TreeSet<>();
@@ -375,12 +375,27 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
 
         if (getElementType() == ElementType.VERTEX) {
             historicalEvents.addAll(
-                graph.getHistoricalVertexEdgeEvents(getId(), historicalEventsFetchHints, user)
+                getHistoricalVertexEdgeEvents(graph, historicalEventsFetchHints, user)
                     .collect(Collectors.toList())
             );
         }
 
         return historicalEventsFetchHints.applyToResults(historicalEvents.stream(), after);
+    }
+
+    private Stream<HistoricalEvent> getHistoricalVertexEdgeEvents(
+        InMemoryGraph graph,
+        HistoricalEventsFetchHints historicalEventsFetchHints,
+        User user
+    ) {
+        FetchHints elementFetchHints = new FetchHintsBuilder()
+            .setIncludeAllProperties(true)
+            .setIncludeAllPropertyMetadata(true)
+            .setIncludeHidden(true)
+            .setIncludeAllEdgeRefs(true)
+            .build();
+        return graph.getInMemoryTableEdgesForVertex(getId(), elementFetchHints, user)
+            .flatMap(inMemoryTableElement -> inMemoryTableElement.getHistoricalEventsForVertex(getId(), historicalEventsFetchHints));
     }
 
     private String getHistoricalOrder(Mutation m) {
@@ -451,22 +466,10 @@ public abstract class InMemoryTableElement<TElement extends InMemoryElement> imp
             List<PropertyMutation> propertyMutations = propertiesMutations.computeIfAbsent(mapKey, k -> new ArrayList<>());
             propertyMutations.add(m);
         }
-        return new LookAheadIterable<List<PropertyMutation>, Property>() {
-            @Override
-            protected boolean isIncluded(List<PropertyMutation> src, Property property) {
-                return property != null;
-            }
-
-            @Override
-            protected Property convert(List<PropertyMutation> propertyMutations) {
-                return toProperty(propertyMutations, fetchHints, user);
-            }
-
-            @Override
-            protected Iterator<List<PropertyMutation>> createIterator() {
-                return propertiesMutations.values().iterator();
-            }
-        };
+        return propertiesMutations.values().stream()
+            .map(propertyMutations -> toProperty(propertyMutations, fetchHints, user))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
     }
 
     private Property toProperty(List<PropertyMutation> propertyMutations, FetchHints fetchHints, User user) {

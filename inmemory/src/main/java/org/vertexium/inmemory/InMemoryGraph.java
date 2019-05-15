@@ -1,31 +1,25 @@
 package org.vertexium.inmemory;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.vertexium.*;
-import org.vertexium.event.*;
-import org.vertexium.historicalEvent.HistoricalEvent;
+import org.vertexium.event.GraphEvent;
 import org.vertexium.id.IdGenerator;
-import org.vertexium.inmemory.mutations.AlterEdgeLabelMutation;
-import org.vertexium.inmemory.mutations.AlterVisibilityMutation;
 import org.vertexium.inmemory.mutations.EdgeSetupMutation;
-import org.vertexium.inmemory.mutations.ElementTimestampMutation;
-import org.vertexium.mutation.*;
 import org.vertexium.property.StreamingPropertyValue;
-import org.vertexium.property.StreamingPropertyValueRef;
-import org.vertexium.search.IndexHint;
 import org.vertexium.search.SearchIndex;
-import org.vertexium.util.*;
+import org.vertexium.util.ConvertingIterable;
+import org.vertexium.util.FilterIterable;
+import org.vertexium.util.IncreasingTime;
 
+import java.io.InputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.vertexium.util.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.vertexium.util.StreamUtils.stream;
 
 public class InMemoryGraph extends GraphBase {
-    private static final VertexiumLogger LOGGER = VertexiumLoggerFactory.getLogger(InMemoryGraph.class);
     protected static final InMemoryGraphConfiguration DEFAULT_CONFIGURATION =
         new InMemoryGraphConfiguration(new HashMap<>());
     private final Set<String> validAuthorizations = new HashSet<>();
@@ -33,6 +27,8 @@ public class InMemoryGraph extends GraphBase {
     private final InMemoryEdgeTable edges;
     private final InMemoryExtendedDataTable extendedDataTable;
     private final GraphMetadataStore graphMetadataStore;
+    private final InMemoryElementMutationBuilder elementMutationBuilder;
+    private final InMemoryFindPathStrategy findPathStrategy = new InMemoryFindPathStrategy(this);
 
     protected InMemoryGraph(InMemoryGraphConfiguration configuration) {
         this(
@@ -65,6 +61,7 @@ public class InMemoryGraph extends GraphBase {
         this.edges = edges;
         this.extendedDataTable = extendedDataTable;
         this.graphMetadataStore = newGraphMetadataStore();
+        this.elementMutationBuilder = createInMemoryElementMutationBuilder();
     }
 
     protected InMemoryGraph(
@@ -80,6 +77,21 @@ public class InMemoryGraph extends GraphBase {
         this.edges = edges;
         this.extendedDataTable = extendedDataTable;
         this.graphMetadataStore = newGraphMetadataStore();
+        this.elementMutationBuilder = createInMemoryElementMutationBuilder();
+    }
+
+    private InMemoryElementMutationBuilder createInMemoryElementMutationBuilder() {
+        return new InMemoryElementMutationBuilder(
+            this,
+            this.vertices,
+            this.edges,
+            this.extendedDataTable,
+            (GraphEvent event) -> {
+                if (hasEventListeners()) {
+                    fireGraphEvent(event);
+                }
+            }
+        );
     }
 
     protected GraphMetadataStore newGraphMetadataStore() {
@@ -111,13 +123,14 @@ public class InMemoryGraph extends GraphBase {
 
     @Override
     public VertexBuilder prepareVertex(String vertexId, Long timestamp, Visibility visibility) {
+        checkNotNull(visibility, "visibility is required");
         if (vertexId == null) {
             vertexId = getIdGenerator().nextId();
         }
         if (timestamp == null) {
             timestamp = IncreasingTime.currentTimeMillis();
         }
-        final long timestampLong = timestamp;
+        long finalTimestamp = timestamp;
 
         return new VertexBuilder(vertexId, visibility) {
             @Override
@@ -131,72 +144,12 @@ public class InMemoryGraph extends GraphBase {
             }
 
             private Vertex saveVertex(User user) {
-                addValidAuthorizations(user.getAuthorizations());
-                boolean isNew = false;
-                InMemoryTableElement vertexTableElement = InMemoryGraph.this.vertices.getTableElement(getId());
-                if (vertexTableElement == null) {
-                    isNew = true;
-                    vertices.append(
-                        getId(),
-                        new AlterVisibilityMutation(timestampLong, getVisibility(), null),
-                        new ElementTimestampMutation(timestampLong)
-                    );
-                } else {
-                    if (vertexTableElement.getVisibility().equals(getVisibility())) {
-                        vertices.append(getId(), new ElementTimestampMutation(timestampLong));
-                    } else {
-                        vertices.append(getId(), new AlterVisibilityMutation(timestampLong, getVisibility(), null), new ElementTimestampMutation(timestampLong));
-                    }
-                }
-                InMemoryVertex vertex = InMemoryGraph.this.vertices.get(InMemoryGraph.this, getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
-                if (isNew && hasEventListeners()) {
-                    fireGraphEvent(new AddVertexEvent(InMemoryGraph.this, vertex));
-                }
-                vertex.updateInternal(this);
-
-                // to more closely simulate how accumulo works. add a potentially sparse (in case of an update) vertex to the search index.
-                if (getIndexHint() != IndexHint.DO_NOT_INDEX) {
-                    updateElementAndExtendedDataInSearchIndex(vertex, this, user);
-                }
-
-                return vertex;
+                return elementMutationBuilder.saveVertexBuilder(this, finalTimestamp, user);
             }
         };
     }
 
-    <T extends Element> void updateElementAndExtendedDataInSearchIndex(
-        Element element,
-        ElementMutation<T> elementMutation,
-        User user
-    ) {
-        if (elementMutation instanceof ExistingElementMutation) {
-            getSearchIndex().updateElement(this, (ExistingElementMutation<? extends Element>) elementMutation, user);
-        } else {
-            getSearchIndex().addElement(this, element, user);
-        }
-        getSearchIndex().addElementExtendedData(
-            InMemoryGraph.this,
-            element,
-            elementMutation.getExtendedData(),
-            elementMutation.getAdditionalExtendedDataVisibilities(),
-            elementMutation.getAdditionalExtendedDataVisibilityDeletes(),
-            user
-        );
-        for (ExtendedDataDeleteMutation m : elementMutation.getExtendedDataDeletes()) {
-            getSearchIndex().deleteExtendedData(
-                InMemoryGraph.this,
-                element,
-                m.getTableName(),
-                m.getRow(),
-                m.getColumnName(),
-                m.getKey(),
-                m.getVisibility(),
-                user
-            );
-        }
-    }
-
-    private void addValidAuthorizations(String[] authorizations) {
+    void addValidAuthorizations(String[] authorizations) {
         Collections.addAll(this.validAuthorizations, authorizations);
     }
 
@@ -215,163 +168,106 @@ public class InMemoryGraph extends GraphBase {
         }
     }
 
-    void markPropertyHidden(
-        InMemoryElement element,
-        InMemoryTableElement inMemoryTableElement,
-        String propertyKey,
-        String propertyName,
-        Visibility propertyVisibility,
-        Long timestamp,
-        Visibility visibility,
-        Object data,
-        User user
-    ) {
-        if (!element.canRead(user)) {
-            return;
-        }
-
-        Property hiddenProperty = inMemoryTableElement.appendMarkPropertyHiddenMutation(
-            propertyKey,
-            propertyName,
-            propertyVisibility,
-            timestamp,
-            visibility,
-            data,
-            user
-        );
-
-        getSearchIndex().markPropertyHidden(this, element, hiddenProperty, visibility, user);
-
-        if (hiddenProperty != null && hasEventListeners()) {
-            fireGraphEvent(new MarkHiddenPropertyEvent(this, element, hiddenProperty, visibility, data));
-        }
-    }
-
-    void markPropertyVisible(
-        InMemoryElement element,
-        InMemoryTableElement inMemoryTableElement,
-        String key,
-        String name,
-        Visibility propertyVisibility,
-        Long timestamp,
-        Visibility visibility,
-        Object data,
-        User user
-    ) {
-        if (!element.canRead(user)) {
-            return;
-        }
-
-        Property property = inMemoryTableElement.appendMarkPropertyVisibleMutation(
-            key,
-            name,
-            propertyVisibility,
-            timestamp,
-            visibility,
-            data,
-            user
-        );
-
-        getSearchIndex().markPropertyVisible(this, element, property, visibility, user);
-
-        if (property != null && hasEventListeners()) {
-            fireGraphEvent(new MarkVisiblePropertyEvent(this, element, property, visibility, data));
-        }
-    }
-
     @Override
-    public EdgeBuilderByVertexId prepareEdge(String edgeId, String outVertexId, String inVertexId, String label, final Long timestamp, Visibility visibility) {
+    public EdgeBuilderByVertexId prepareEdge(
+        String edgeId,
+        String outVertexId,
+        String inVertexId,
+        String label,
+        Long timestamp,
+        Visibility visibility
+    ) {
         checkNotNull(outVertexId, "outVertexId cannot be null");
         checkNotNull(inVertexId, "inVertexId cannot be null");
         checkNotNull(label, "label cannot be null");
         if (edgeId == null) {
             edgeId = getIdGenerator().nextId();
         }
-
-        return new EdgeBuilderByVertexId(edgeId, outVertexId, inVertexId, label, visibility) {
-            @Override
-            public Edge save(Authorizations authorizations) {
-                addValidAuthorizations(authorizations.getAuthorizations());
-                return savePreparedEdge(this, getVertexId(Direction.OUT), getVertexId(Direction.IN), timestamp, authorizations.getUser());
-            }
-
-            @Override
-            public String save(User user) {
-                addValidAuthorizations(user.getAuthorizations());
-                Edge e = savePreparedEdge(this, getVertexId(Direction.OUT), getVertexId(Direction.IN), timestamp, user);
-                return e.getId();
-            }
-        };
-    }
-
-    @Override
-    public EdgeBuilder prepareEdge(String edgeId, Vertex outVertex, Vertex inVertex, String label, final Long timestamp, Visibility visibility) {
-        checkNotNull(outVertex, "outVertex cannot be null");
-        checkNotNull(inVertex, "inVertex cannot be null");
-        checkNotNull(label, "label cannot be null");
-        if (edgeId == null) {
-            edgeId = getIdGenerator().nextId();
-        }
-
-        return new EdgeBuilder(edgeId, outVertex, inVertex, label, visibility) {
-            @Override
-            public Edge save(Authorizations authorizations) {
-                addValidAuthorizations(authorizations.getAuthorizations());
-                return savePreparedEdge(this, getOutVertex().getId(), getInVertex().getId(), timestamp, authorizations.getUser());
-            }
-
-            @Override
-            public String save(User user) {
-                addValidAuthorizations(user.getAuthorizations());
-                Edge e = savePreparedEdge(this, getOutVertex().getId(), getInVertex().getId(), timestamp, user);
-                return e.getId();
-            }
-        };
-    }
-
-    private Edge savePreparedEdge(final EdgeBuilderBase edgeBuilder, final String outVertexId, final String inVertexId, Long timestamp, User user) {
         if (timestamp == null) {
             timestamp = IncreasingTime.currentTimeMillis();
 
             // The timestamps will be incremented below, this will ensure future mutations will be in the future
             IncreasingTime.advanceTime(10);
         }
-        long incrementingTimestamp = timestamp;
-        InMemoryTableElement edgeTableElement = this.edges.getTableElement(edgeBuilder.getId());
-        boolean isNew = false;
-        if (edgeTableElement == null) {
-            isNew = true;
-            edges.append(
-                edgeBuilder.getId(),
-                new AlterVisibilityMutation(incrementingTimestamp++, edgeBuilder.getVisibility(), null),
-                new ElementTimestampMutation(incrementingTimestamp++),
-                new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()),
-                new EdgeSetupMutation(incrementingTimestamp++, outVertexId, inVertexId)
-            );
-        } else {
-            edges.append(edgeBuilder.getId(), new ElementTimestampMutation(incrementingTimestamp++));
-            if (edgeBuilder.getNewEdgeLabel() == null) {
-                AlterEdgeLabelMutation alterEdgeLabelMutation = (AlterEdgeLabelMutation) edgeTableElement.findLastMutation(AlterEdgeLabelMutation.class);
-                if (alterEdgeLabelMutation != null && !alterEdgeLabelMutation.getNewEdgeLabel().equals(edgeBuilder.getEdgeLabel())) {
-                    edges.append(edgeBuilder.getId(), new AlterEdgeLabelMutation(incrementingTimestamp++, edgeBuilder.getEdgeLabel()));
-                }
+        long finalTimestamp = timestamp;
+
+        return new EdgeBuilderByVertexId(edgeId, outVertexId, inVertexId, label, visibility) {
+            @Override
+            public Edge save(Authorizations authorizations) {
+                addValidAuthorizations(authorizations.getAuthorizations());
+                return elementMutationBuilder.savePreparedEdge(
+                    this,
+                    getVertexId(Direction.OUT),
+                    getVertexId(Direction.IN),
+                    finalTimestamp,
+                    authorizations.getUser()
+                );
             }
-        }
-        if (edgeBuilder.getNewEdgeLabel() != null) {
-            edges.append(edgeBuilder.getId(), new AlterEdgeLabelMutation(incrementingTimestamp, edgeBuilder.getNewEdgeLabel()));
-        }
 
-        InMemoryEdge edge = this.edges.get(InMemoryGraph.this, edgeBuilder.getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
-        if (isNew && hasEventListeners()) {
-            fireGraphEvent(new AddEdgeEvent(InMemoryGraph.this, edge));
-        }
-        edge.updateInternal(edgeBuilder);
+            @Override
+            public String save(User user) {
+                addValidAuthorizations(user.getAuthorizations());
+                Edge e = elementMutationBuilder.savePreparedEdge(
+                    this,
+                    getVertexId(Direction.OUT),
+                    getVertexId(Direction.IN),
+                    finalTimestamp,
+                    user
+                );
+                return e.getId();
+            }
+        };
+    }
 
-        if (edgeBuilder.getIndexHint() != IndexHint.DO_NOT_INDEX) {
-            updateElementAndExtendedDataInSearchIndex(edge, edgeBuilder, user);
+    @Override
+    public EdgeBuilder prepareEdge(
+        String edgeId,
+        Vertex outVertex,
+        Vertex inVertex,
+        String label,
+        Long timestamp,
+        Visibility visibility
+    ) {
+        checkNotNull(outVertex, "outVertex cannot be null");
+        checkNotNull(inVertex, "inVertex cannot be null");
+        checkNotNull(label, "label cannot be null");
+        if (edgeId == null) {
+            edgeId = getIdGenerator().nextId();
         }
+        if (timestamp == null) {
+            timestamp = IncreasingTime.currentTimeMillis();
 
-        return edge;
+            // The timestamps will be incremented below, this will ensure future mutations will be in the future
+            IncreasingTime.advanceTime(10);
+        }
+        long finalTimestamp = timestamp;
+
+        return new EdgeBuilder(edgeId, outVertex, inVertex, label, visibility) {
+            @Override
+            public Edge save(Authorizations authorizations) {
+                addValidAuthorizations(authorizations.getAuthorizations());
+                return elementMutationBuilder.savePreparedEdge(
+                    this,
+                    getOutVertex().getId(),
+                    getInVertex().getId(),
+                    finalTimestamp,
+                    authorizations.getUser()
+                );
+            }
+
+            @Override
+            public String save(User user) {
+                addValidAuthorizations(user.getAuthorizations());
+                Edge e = elementMutationBuilder.savePreparedEdge(
+                    this,
+                    getOutVertex().getId(),
+                    getInVertex().getId(),
+                    finalTimestamp,
+                    user
+                );
+                return e.getId();
+            }
+        };
     }
 
     @Override
@@ -386,187 +282,6 @@ public class InMemoryGraph extends GraphBase {
         return graphMetadataStore;
     }
 
-    void deleteElement(InMemoryElement element, User user) {
-        if (element instanceof Edge) {
-            Edge edge = (Edge) element;
-
-            checkNotNull(edge, "Edge cannot be null");
-            if (!((InMemoryEdge) edge).canRead(user)) {
-                return;
-            }
-
-            deleteAllExtendedDataForElement(edge, user);
-
-            this.edges.remove(edge.getId());
-            getSearchIndex().deleteElement(this, edge, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new DeleteEdgeEvent(this, edge));
-            }
-        } else if (element instanceof Vertex) {
-            Vertex vertex = (Vertex) element;
-            if (!((InMemoryVertex) vertex).canRead(user)) {
-                return;
-            }
-
-            vertex.getEdges(Direction.BOTH, user)
-                .forEach(edgeToDelete -> deleteElement((InMemoryElement) edgeToDelete, user));
-
-            deleteAllExtendedDataForElement(vertex, user);
-
-            this.vertices.remove(vertex.getId());
-            getSearchIndex().deleteElement(this, vertex, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new DeleteVertexEvent(this, vertex));
-            }
-        } else {
-            throw new VertexiumException("Unhandled element type: " + element);
-        }
-    }
-
-    <T extends InMemoryElement> void softDeleteElement(
-        InMemoryElement<T> element,
-        Long timestamp,
-        Object eventData,
-        User user
-    ) {
-        checkNotNull(element, "Element cannot be null");
-        if (timestamp == null) {
-            timestamp = IncreasingTime.currentTimeMillis();
-        }
-        long timestampFinal = timestamp;
-
-        if (!element.canRead(user)) {
-            return;
-        }
-
-        for (Property property : element.getProperties()) {
-            softDeleteProperty(
-                element.getInMemoryTableElement(),
-                property,
-                timestamp,
-                eventData,
-                IndexHint.INDEX,
-                user
-            );
-        }
-
-        if (element instanceof Edge) {
-            Edge edge = (Edge) element;
-
-            this.edges.getTableElement(edge.getId()).appendSoftDeleteMutation(timestamp, eventData);
-
-            getSearchIndex().deleteElement(this, edge, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new SoftDeleteEdgeEvent(this, edge, eventData));
-            }
-        } else if (element instanceof Vertex) {
-            Vertex vertex = (Vertex) element;
-            if (!((InMemoryVertex) vertex).canRead(user)) {
-                return;
-            }
-
-            vertex.getEdges(Direction.BOTH, user)
-                .forEach(edgeToSoftDelete -> softDeleteElement((InMemoryEdge) edgeToSoftDelete, timestampFinal, eventData, user));
-
-            this.vertices.getTableElement(vertex.getId()).appendSoftDeleteMutation(timestamp, eventData);
-
-            getSearchIndex().deleteElement(this, vertex, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new SoftDeleteVertexEvent(this, vertex, eventData));
-            }
-        } else {
-            throw new VertexiumException("Unhandled element type: " + element);
-        }
-    }
-
-    <T extends InMemoryElement> void markElementHidden(
-        InMemoryElement<T> element,
-        Visibility visibility,
-        Object eventData,
-        User user
-    ) {
-        if (!element.canRead(user)) {
-            return;
-        }
-
-        if (element instanceof Edge) {
-            Edge edge = (Edge) element;
-
-            Vertex inVertex = getVertex(edge.getVertexId(Direction.IN), FetchHints.ALL_INCLUDING_HIDDEN, user);
-            checkNotNull(inVertex, "Could not find in vertex \"" + edge.getVertexId(Direction.IN) + "\" on edge \"" + edge.getId() + "\"");
-            Vertex outVertex = getVertex(edge.getVertexId(Direction.OUT), FetchHints.ALL_INCLUDING_HIDDEN, user);
-            checkNotNull(outVertex, "Could not find out vertex \"" + edge.getVertexId(Direction.OUT) + "\" on edge \"" + edge.getId() + "\"");
-
-            this.edges.getTableElement(edge.getId()).appendMarkHiddenMutation(visibility, eventData);
-            getSearchIndex().markElementHidden(this, edge, visibility, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new MarkHiddenEdgeEvent(this, edge, eventData));
-            }
-        } else if (element instanceof Vertex) {
-            Vertex vertex = (Vertex) element;
-
-            vertex.getEdges(Direction.BOTH, FetchHints.ALL_INCLUDING_HIDDEN, user)
-                .forEach(edgeToMarkHidden -> markElementHidden((InMemoryEdge) edgeToMarkHidden, visibility, eventData, user));
-
-            this.vertices.getTableElement(vertex.getId()).appendMarkHiddenMutation(visibility, eventData);
-            refreshVertexInMemoryTableElement(vertex);
-            getSearchIndex().markElementHidden(this, vertex, visibility, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new MarkHiddenVertexEvent(this, vertex, eventData));
-            }
-        } else {
-            throw new VertexiumException("Unhandled element type: " + element);
-        }
-    }
-
-    <T extends InMemoryElement> void markElementVisible(
-        InMemoryElement<T> element,
-        Visibility visibility,
-        Object eventData,
-        User user
-    ) {
-        if (!element.canRead(user)) {
-            return;
-        }
-
-        if (element instanceof Edge) {
-            Edge edge = (Edge) element;
-
-            Vertex inVertex = getVertex(edge.getVertexId(Direction.IN), FetchHints.ALL_INCLUDING_HIDDEN, user);
-            checkNotNull(inVertex, "Could not find in vertex \"" + edge.getVertexId(Direction.IN) + "\" on edge \"" + edge.getId() + "\"");
-            Vertex outVertex = getVertex(edge.getVertexId(Direction.OUT), FetchHints.ALL_INCLUDING_HIDDEN, user);
-            checkNotNull(outVertex, "Could not find out vertex \"" + edge.getVertexId(Direction.OUT) + "\" on edge \"" + edge.getId() + "\"");
-
-            this.edges.getTableElement(edge.getId()).appendMarkVisibleMutation(visibility, eventData);
-            getSearchIndex().markElementVisible(this, edge, visibility, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new MarkVisibleEdgeEvent(this, edge, eventData));
-            }
-        } else if (element instanceof Vertex) {
-            Vertex vertex = (Vertex) element;
-
-            vertex.getEdges(Direction.BOTH, FetchHints.ALL_INCLUDING_HIDDEN, user)
-                .forEach(edgeToMarkVisible -> markElementVisible((InMemoryEdge) edgeToMarkVisible, visibility, eventData, user));
-
-            this.vertices.getTableElement(vertex.getId()).appendMarkVisibleMutation(visibility, eventData);
-            refreshVertexInMemoryTableElement(vertex);
-            getSearchIndex().markElementVisible(this, vertex, visibility, user);
-
-            if (hasEventListeners()) {
-                fireGraphEvent(new MarkVisibleVertexEvent(this, vertex, eventData));
-            }
-        } else {
-            throw new VertexiumException("Unhandled element type: " + element);
-        }
-    }
-
     @Override
     public Authorizations createAuthorizations(String... auths) {
         addValidAuthorizations(auths);
@@ -577,7 +292,7 @@ public class InMemoryGraph extends GraphBase {
         return edges.getAllTableElements();
     }
 
-    private Stream<InMemoryTableEdge> getInMemoryTableEdgesForVertex(String vertexId, FetchHints fetchHints, User user) {
+    Stream<InMemoryTableEdge> getInMemoryTableEdgesForVertex(String vertexId, FetchHints fetchHints, User user) {
         return getInMemoryTableEdges()
             .filter(inMemoryTableElement -> {
                 EdgeSetupMutation edgeSetupMutation = inMemoryTableElement.findLastMutation(EdgeSetupMutation.class);
@@ -648,187 +363,6 @@ public class InMemoryGraph extends GraphBase {
         return true;
     }
 
-    protected void addAdditionalVisibility(
-        InMemoryTableElement inMemoryTableElement,
-        String visibility,
-        Object eventData,
-        User user
-    ) {
-        Element element;
-        FetchHints fetchHints = new FetchHintsBuilder(FetchHints.ALL_INCLUDING_HIDDEN)
-            .setIgnoreAdditionalVisibilities(true)
-            .build();
-        inMemoryTableElement.appendAddAdditionalVisibilityMutation(visibility, eventData);
-        if (inMemoryTableElement instanceof InMemoryTableVertex) {
-            element = getVertex(inMemoryTableElement.getId(), fetchHints, user);
-        } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
-            element = getEdge(inMemoryTableElement.getId(), fetchHints, user);
-        } else {
-            throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
-        }
-        if (hasEventListeners()) {
-            fireGraphEvent(new AddAdditionalVisibilityEvent(this, element, visibility, eventData));
-        }
-    }
-
-    protected void deleteAdditionalVisibility(
-        InMemoryTableElement inMemoryTableElement,
-        String visibility,
-        Object eventData,
-        User user
-    ) {
-        Element element;
-        FetchHints fetchHints = new FetchHintsBuilder(FetchHints.ALL_INCLUDING_HIDDEN)
-            .setIgnoreAdditionalVisibilities(true)
-            .build();
-        inMemoryTableElement.appendDeleteAdditionalVisibilityMutation(visibility, eventData);
-        if (inMemoryTableElement instanceof InMemoryTableVertex) {
-            element = getVertex(inMemoryTableElement.getId(), fetchHints, user);
-        } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
-            element = getEdge(inMemoryTableElement.getId(), fetchHints, user);
-        } else {
-            throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
-        }
-        if (hasEventListeners()) {
-            fireGraphEvent(new DeleteAdditionalVisibilityEvent(this, element, visibility, eventData));
-        }
-    }
-
-    protected void softDeleteProperty(
-        InMemoryTableElement inMemoryTableElement,
-        Property property,
-        Long timestamp,
-        Object data,
-        IndexHint indexHint,
-        User user
-    ) {
-        Element element;
-        if (inMemoryTableElement instanceof InMemoryTableVertex) {
-            inMemoryTableElement.appendSoftDeletePropertyMutation(property.getKey(), property.getName(), property.getVisibility(), timestamp, data);
-            element = getVertex(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
-        } else if (inMemoryTableElement instanceof InMemoryTableEdge) {
-            inMemoryTableElement.appendSoftDeletePropertyMutation(property.getKey(), property.getName(), property.getVisibility(), timestamp, data);
-            element = getEdge(inMemoryTableElement.getId(), FetchHints.ALL_INCLUDING_HIDDEN, user);
-        } else {
-            throw new IllegalArgumentException("Unexpected element type: " + inMemoryTableElement.getClass().getName());
-        }
-        if (indexHint != IndexHint.DO_NOT_INDEX) {
-            getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), user);
-        }
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new SoftDeletePropertyEvent(this, element, property, data));
-        }
-    }
-
-    public void addPropertyValue(
-        InMemoryElement element,
-        InMemoryTableElement inMemoryTableElement,
-        String key,
-        String name,
-        Object value,
-        Metadata metadata,
-        Visibility visibility,
-        Long timestamp,
-        User user
-    ) {
-        ensurePropertyDefined(name, value);
-
-        if (timestamp == null) {
-            timestamp = IncreasingTime.currentTimeMillis();
-        }
-
-        if (value instanceof StreamingPropertyValue) {
-            value = saveStreamingPropertyValue((StreamingPropertyValue) value);
-        }
-        inMemoryTableElement.appendAddPropertyValueMutation(key, name, value, metadata, visibility, timestamp, null);
-        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, user);
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new AddPropertyEvent(this, element, property));
-        }
-    }
-
-    protected void alterElementVisibility(InMemoryTableElement inMemoryTableElement, Visibility newEdgeVisibility, Object data) {
-        inMemoryTableElement.appendAlterVisibilityMutation(newEdgeVisibility, data);
-    }
-
-    protected void alterElementPropertyVisibilities(
-        InMemoryTableElement inMemoryTableElement,
-        List<AlterPropertyVisibility> alterPropertyVisibilities,
-        User user
-    ) {
-        for (AlterPropertyVisibility apv : alterPropertyVisibilities) {
-            Property property = inMemoryTableElement.getProperty(
-                apv.getKey(),
-                apv.getName(),
-                apv.getExistingVisibility(),
-                FetchHints.ALL_INCLUDING_HIDDEN,
-                user
-            );
-            if (property == null) {
-                throw new VertexiumException("Could not find property " + apv.getKey() + ":" + apv.getName());
-            }
-            if (apv.getExistingVisibility() == null) {
-                apv.setExistingVisibility(property.getVisibility());
-            }
-            Object value = property.getValue();
-            Metadata metadata = property.getMetadata();
-
-            inMemoryTableElement.appendSoftDeletePropertyMutation(
-                apv.getKey(),
-                apv.getName(),
-                apv.getExistingVisibility(),
-                apv.getTimestamp(),
-                apv.getData()
-            );
-
-            long newTimestamp = apv.getTimestamp() + 1;
-            if (value instanceof StreamingPropertyValue) {
-                value = saveStreamingPropertyValue((StreamingPropertyValue) value);
-            }
-            inMemoryTableElement.appendAddPropertyValueMutation(
-                apv.getKey(),
-                apv.getName(),
-                value,
-                metadata,
-                apv.getVisibility(),
-                newTimestamp,
-                apv.getData()
-            );
-        }
-    }
-
-    protected void alterElementPropertyMetadata(
-        InMemoryTableElement inMemoryTableElement,
-        List<SetPropertyMetadata> setPropertyMetadatas,
-        User user
-    ) {
-        for (SetPropertyMetadata spm : setPropertyMetadatas) {
-            Property property = inMemoryTableElement.getProperty(
-                spm.getPropertyKey(),
-                spm.getPropertyName(),
-                spm.getPropertyVisibility(),
-                FetchHints.ALL_INCLUDING_HIDDEN,
-                user
-            );
-            if (property == null) {
-                throw new VertexiumException("Could not find property " + spm.getPropertyKey() + ":" + spm.getPropertyName());
-            }
-
-            Metadata metadata = Metadata.create(property.getMetadata());
-            metadata.add(spm.getMetadataName(), spm.getNewValue(), spm.getMetadataVisibility());
-
-            long newTimestamp = IncreasingTime.currentTimeMillis();
-            inMemoryTableElement.appendAddPropertyMetadataMutation(
-                property.getKey(), property.getName(), metadata, property.getVisibility(), newTimestamp);
-        }
-    }
-
-    protected StreamingPropertyValueRef saveStreamingPropertyValue(StreamingPropertyValue value) {
-        return new InMemoryStreamingPropertyValueRef(value);
-    }
-
     @Override
     public boolean isVisibilityValid(Visibility visibility, Authorizations authorizations) {
         return authorizations.canRead(visibility);
@@ -836,7 +370,7 @@ public class InMemoryGraph extends GraphBase {
 
     @Override
     public boolean isVisibilityValid(Visibility visibility, User user) {
-        return false;
+        return user.canRead(visibility);
     }
 
     @Override
@@ -853,180 +387,13 @@ public class InMemoryGraph extends GraphBase {
         getSearchIndex().drop(this);
     }
 
-    protected void alterEdgeLabel(InMemoryTableEdge inMemoryTableEdge, long timestamp, String newEdgeLabel) {
-        inMemoryTableEdge.appendAlterEdgeLabelMutation(timestamp, newEdgeLabel);
-    }
-
-    protected void deleteProperty(
-        InMemoryElement element,
-        InMemoryTableElement inMemoryTableElement,
-        String key,
-        String name,
-        Visibility visibility,
-        User user
-    ) {
-        Property property = inMemoryTableElement.getProperty(key, name, visibility, FetchHints.ALL_INCLUDING_HIDDEN, user);
-        inMemoryTableElement.deleteProperty(key, name, visibility, user);
-
-        getSearchIndex().deleteProperty(this, element, PropertyDescriptor.fromProperty(property), user);
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new DeletePropertyEvent(this, element, property));
-        }
-    }
-
-    private void refreshVertexInMemoryTableElement(Vertex vertex) {
-        ((InMemoryVertex) vertex).setInMemoryTableElement(this.vertices.getTableElement(vertex.getId()));
-    }
-
-    public ImmutableSet<String> getExtendedDataTableNames(
-        ElementType elementType,
-        String elementId,
-        FetchHints fetchHints,
-        User user
-    ) {
-        return extendedDataTable.getTableNames(elementType, elementId, fetchHints, user);
-    }
-
-    public Iterable<? extends ExtendedDataRow> getExtendedDataTable(
-        ElementType elementType,
-        String elementId,
-        String tableName,
-        FetchHints fetchHints,
-        User user
-    ) {
-        return extendedDataTable.getTable(elementType, elementId, tableName, fetchHints, user);
-    }
-
-    public void extendedData(
-        Element element,
-        ExtendedDataRowId rowId,
-        ExtendedDataMutation extendedData,
-        User user
-    ) {
-        extendedDataTable.addData(rowId, extendedData.getColumnName(), extendedData.getKey(), extendedData.getValue(), extendedData.getTimestamp(), extendedData.getVisibility());
-        getSearchIndex().addElementExtendedData(
-            this,
-            element,
-            Collections.singleton(extendedData),
-            Collections.emptyList(),
-            Collections.emptyList(),
-            user
-        );
-        if (hasEventListeners()) {
-            fireGraphEvent(new AddExtendedDataEvent(
-                this,
-                element,
-                rowId.getTableName(),
-                rowId.getRowId(),
-                extendedData.getColumnName(),
-                extendedData.getKey(),
-                extendedData.getValue(),
-                extendedData.getVisibility()
-            ));
-        }
-    }
-
-    <T extends InMemoryElement> void deleteExtendedDataRow(
-        InMemoryElement<T> element,
-        String tableName,
-        String rowId,
-        User user
-    ) {
-        ExtendedDataRowId id = new ExtendedDataRowId(
-            ElementType.getTypeFromElement(element),
-            element.getId(),
-            tableName,
-            rowId
-        );
-        List<ExtendedDataRow> rows = getExtendedData(Lists.newArrayList(id), user).collect(Collectors.toList());
-        if (rows.size() > 1) {
-            throw new VertexiumException("Found too many extended data rows for id: " + id);
-        }
-        if (rows.size() != 1) {
-            return;
-        }
-
-        this.extendedDataTable.remove(id);
-        getSearchIndex().deleteExtendedData(this, id, user);
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new DeleteExtendedDataRowEvent(this, id));
-        }
-    }
-
-    public void deleteExtendedData(
-        InMemoryElement element,
-        String tableName,
-        String row,
-        String columnName,
-        String key,
-        Visibility visibility,
-        User user
-    ) {
-        extendedDataTable.removeColumn(
-            new ExtendedDataRowId(ElementType.getTypeFromElement(element), element.getId(), tableName, row),
-            columnName,
-            key,
-            visibility
-        );
-
-        getSearchIndex().deleteExtendedData(this, element, tableName, row, columnName, key, visibility, user);
-        if (hasEventListeners()) {
-            fireGraphEvent(new DeleteExtendedDataEvent(this, element, tableName, row, columnName, key));
-        }
-    }
-
-    public void addAdditionalExtendedDataVisibility(
-        InMemoryElement element,
-        String tableName,
-        String row,
-        String additionalVisibility
-    ) {
-        extendedDataTable.addAdditionalVisibility(
-            new ExtendedDataRowId(ElementType.getTypeFromElement(element), element.getId(), tableName, row),
-            additionalVisibility
-        );
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new AddAdditionalExtendedDataVisibilityEvent(this, element, tableName, row, additionalVisibility));
-        }
-    }
-
-    public void deleteAdditionalExtendedDataVisibility(
-        InMemoryElement element,
-        String tableName,
-        String row,
-        String additionalVisibility
-    ) {
-        extendedDataTable.deleteAdditionalVisibility(
-            new ExtendedDataRowId(ElementType.getTypeFromElement(element), element.getId(), tableName, row),
-            additionalVisibility
-        );
-
-        if (hasEventListeners()) {
-            fireGraphEvent(new DeleteAdditionalExtendedDataVisibilityEvent(this, element, tableName, row, additionalVisibility));
-        }
+    InMemoryExtendedDataTable getExtendedDataTable() {
+        return extendedDataTable;
     }
 
     @Override
     public void flushGraph() {
         // no need to do anything here
-    }
-
-    Stream<HistoricalEvent> getHistoricalVertexEdgeEvents(
-        String vertexId,
-        HistoricalEventsFetchHints historicalEventsFetchHints,
-        User user
-    ) {
-        FetchHints elementFetchHints = new FetchHintsBuilder()
-            .setIncludeAllProperties(true)
-            .setIncludeAllPropertyMetadata(true)
-            .setIncludeHidden(true)
-            .setIncludeAllEdgeRefs(true)
-            .build();
-        return getInMemoryTableEdgesForVertex(vertexId, elementFetchHints, user)
-            .flatMap(inMemoryTableElement -> inMemoryTableElement.getHistoricalEventsForVertex(vertexId, historicalEventsFetchHints));
     }
 
     @Override
@@ -1155,168 +522,7 @@ public class InMemoryGraph extends GraphBase {
 
     @Override
     public Stream<Path> findPaths(FindPathOptions options, User user) {
-        ProgressCallback progressCallback = options.getProgressCallback();
-        if (progressCallback == null) {
-            progressCallback = new ProgressCallback() {
-                @Override
-                public void progress(double progressPercent, Step step, Integer edgeIndex, Integer vertexCount) {
-                    LOGGER.debug("findPaths progress %d%%: %s", (int) (progressPercent * 100.0), step.formatMessage(edgeIndex, vertexCount));
-                }
-            };
-        }
-
-        FetchHints fetchHints = FetchHints.EDGE_REFS;
-        Vertex sourceVertex = getVertex(options.getSourceVertexId(), fetchHints, user);
-        if (sourceVertex == null) {
-            throw new IllegalArgumentException("Could not find vertex with id: " + options.getSourceVertexId());
-        }
-        Vertex destVertex = getVertex(options.getDestVertexId(), fetchHints, user);
-        if (destVertex == null) {
-            throw new IllegalArgumentException("Could not find vertex with id: " + options.getDestVertexId());
-        }
-
-        progressCallback.progress(0, ProgressCallback.Step.FINDING_PATH);
-
-        Set<String> seenVertices = new HashSet<>();
-        seenVertices.add(sourceVertex.getId());
-
-        Path startPath = new Path(sourceVertex.getId());
-
-        List<Path> foundPaths = new ArrayList<>();
-        if (options.getMaxHops() == 2) {
-            findPathsSetIntersection(
-                options,
-                foundPaths,
-                sourceVertex,
-                destVertex,
-                progressCallback,
-                user
-            );
-        } else {
-            findPathsRecursive(
-                options,
-                foundPaths,
-                sourceVertex,
-                destVertex,
-                options.getMaxHops(),
-                seenVertices,
-                startPath,
-                progressCallback,
-                user
-            );
-        }
-
-        progressCallback.progress(1, ProgressCallback.Step.COMPLETE);
-        return foundPaths.stream();
-    }
-
-    private void findPathsSetIntersection(
-        FindPathOptions options,
-        List<Path> foundPaths,
-        Vertex sourceVertex,
-        Vertex destVertex,
-        ProgressCallback progressCallback,
-        User user
-    ) {
-        String sourceVertexId = sourceVertex.getId();
-        String destVertexId = destVertex.getId();
-
-        progressCallback.progress(0.1, ProgressCallback.Step.SEARCHING_SOURCE_VERTEX_EDGES);
-        Set<String> sourceVertexConnectedVertexIds = filterFindPathEdgeInfo(options, sourceVertex.getEdgeInfos(Direction.BOTH, options.getLabels(), user));
-        Map<String, Boolean> sourceVerticesExist = doVerticesExist(sourceVertexConnectedVertexIds, user);
-        sourceVertexConnectedVertexIds = stream(sourceVerticesExist.keySet())
-            .filter(key -> sourceVerticesExist.getOrDefault(key, false))
-            .collect(Collectors.toSet());
-
-        progressCallback.progress(0.3, ProgressCallback.Step.SEARCHING_DESTINATION_VERTEX_EDGES);
-        Set<String> destVertexConnectedVertexIds = filterFindPathEdgeInfo(options, destVertex.getEdgeInfos(Direction.BOTH, options.getLabels(), user));
-        Map<String, Boolean> destVerticesExist = doVerticesExist(destVertexConnectedVertexIds, user);
-        destVertexConnectedVertexIds = stream(destVerticesExist.keySet())
-            .filter(key -> destVerticesExist.getOrDefault(key, false))
-            .collect(Collectors.toSet());
-
-        if (sourceVertexConnectedVertexIds.contains(destVertexId)) {
-            foundPaths.add(new Path(sourceVertexId, destVertexId));
-            if (options.isGetAnyPath()) {
-                return;
-            }
-        }
-
-        progressCallback.progress(0.6, ProgressCallback.Step.MERGING_EDGES);
-        sourceVertexConnectedVertexIds.retainAll(destVertexConnectedVertexIds);
-
-        progressCallback.progress(0.9, ProgressCallback.Step.ADDING_PATHS);
-        for (String connectedVertexId : sourceVertexConnectedVertexIds) {
-            foundPaths.add(new Path(sourceVertexId, connectedVertexId, destVertexId));
-        }
-    }
-
-    private void findPathsRecursive(
-        FindPathOptions options,
-        List<Path> foundPaths,
-        Vertex sourceVertex,
-        Vertex destVertex,
-        int hops,
-        Set<String> seenVertices,
-        Path currentPath,
-        ProgressCallback progressCallback,
-        User user
-    ) {
-        // if this is our first source vertex report progress back to the progress callback
-        boolean firstLevelRecursion = hops == options.getMaxHops();
-
-        if (options.isGetAnyPath() && foundPaths.size() == 1) {
-            return;
-        }
-
-        seenVertices.add(sourceVertex.getId());
-        if (sourceVertex.getId().equals(destVertex.getId())) {
-            foundPaths.add(currentPath);
-        } else if (hops > 0) {
-            Iterable<Vertex> vertices = filterFindPathEdgePairs(options, sourceVertex.getEdgeVertexPairs(Direction.BOTH, options.getLabels(), user));
-            int vertexCount = 0;
-            if (firstLevelRecursion) {
-                vertices = IterableUtils.toList(vertices);
-                vertexCount = ((List<Vertex>) vertices).size();
-            }
-            int i = 0;
-            for (Vertex child : vertices) {
-                if (firstLevelRecursion) {
-                    // this will never get to 100% since i starts at 0. which is good. 100% signifies done and we still have work to do.
-                    double progressPercent = (double) i / (double) vertexCount;
-                    progressCallback.progress(progressPercent, ProgressCallback.Step.SEARCHING_EDGES, i + 1, vertexCount);
-                }
-                if (!seenVertices.contains(child.getId())) {
-                    findPathsRecursive(options, foundPaths, child, destVertex, hops - 1, seenVertices, new Path(currentPath, child.getId()), progressCallback, user);
-                }
-                i++;
-            }
-        }
-        seenVertices.remove(sourceVertex.getId());
-    }
-
-    private Set<String> filterFindPathEdgeInfo(FindPathOptions options, Stream<EdgeInfo> edgeInfos) {
-        return edgeInfos
-            .filter(edgeInfo -> {
-                if (options.getExcludedLabels() != null) {
-                    return !ArrayUtils.contains(options.getExcludedLabels(), edgeInfo.getLabel());
-                }
-                return true;
-            })
-            .map(EdgeInfo::getVertexId)
-            .collect(Collectors.toSet());
-    }
-
-    private Iterable<Vertex> filterFindPathEdgePairs(FindPathOptions options, Stream<EdgeVertexPair> edgeVertexPairs) {
-        return edgeVertexPairs
-            .filter(edgePair -> {
-                if (options.getExcludedLabels() != null) {
-                    return !ArrayUtils.contains(options.getExcludedLabels(), edgePair.getEdge().getLabel());
-                }
-                return true;
-            })
-            .map(EdgeVertexPair::getVertex)
-            .collect(Collectors.toList());
+        return findPathStrategy.findPaths(options, user);
     }
 
     @Override
@@ -1339,5 +545,61 @@ public class InMemoryGraph extends GraphBase {
             getVertices(vertexIds, fetchHints, endTime, user).collect(Collectors.toList()),
             user
         );
+    }
+
+    public InMemoryElementMutationBuilder getElementMutationBuilder() {
+        return elementMutationBuilder;
+    }
+
+    @Override
+    public Stream<ExtendedDataRow> getExtendedData(Iterable<ExtendedDataRowId> idsIterable, FetchHints fetchHints, User user) {
+        Set<ExtendedDataRowId> ids = Sets.newHashSet(idsIterable);
+        return getAllExtendedData(fetchHints, user)
+            .filter(row -> ids.contains(row.getId()));
+    }
+
+    @Override
+    public Stream<ExtendedDataRow> getExtendedData(
+        ElementType elementType,
+        String elementId,
+        String tableName,
+        FetchHints fetchHints,
+        User user
+    ) {
+        if ((elementType == null && (elementId != null || tableName != null))
+            || (elementType != null && elementId == null && tableName != null)) {
+            throw new VertexiumException("Cannot create partial key with missing inner value");
+        }
+
+        return getAllExtendedData(fetchHints, user)
+            .filter(row -> {
+                ExtendedDataRowId rowId = row.getId();
+                return (elementType == null || elementType.equals(rowId.getElementType()))
+                    && (elementId == null || elementId.equals(rowId.getElementId()))
+                    && (tableName == null || tableName.equals(rowId.getTableName()));
+            });
+    }
+
+    @Override
+    public Stream<ExtendedDataRow> getExtendedDataInRange(ElementType elementType, Range elementIdRange, User user) {
+        return getAllExtendedData(FetchHints.ALL, user)
+            .filter(row -> {
+                ExtendedDataRowId rowId = row.getId();
+                return elementType.equals(rowId.getElementType())
+                    && elementIdRange.isInRange(rowId.getElementId());
+            });
+    }
+
+    private Stream<ExtendedDataRow> getAllExtendedData(FetchHints fetchHints, User user) {
+        return Stream.concat(getVertices(fetchHints, user), getEdges(fetchHints, user))
+            .flatMap(element -> element.getExtendedDataTableNames().stream()
+                .flatMap(tableName -> stream(element.getExtendedData(tableName))));
+    }
+
+    @Override
+    public List<InputStream> getStreamingPropertyValueInputStreams(List<StreamingPropertyValue> streamingPropertyValues) {
+        return streamingPropertyValues.stream()
+            .map(StreamingPropertyValue::getInputStream)
+            .collect(Collectors.toList());
     }
 }

@@ -5,10 +5,10 @@ import org.vertexium.mutation.AdditionalExtendedDataVisibilityAddMutation;
 import org.vertexium.mutation.AdditionalExtendedDataVisibilityDeleteMutation;
 import org.vertexium.mutation.ExistingElementMutation;
 import org.vertexium.mutation.ExtendedDataMutation;
-import org.vertexium.query.*;
+import org.vertexium.query.DefaultExtendedDataQuery;
 import org.vertexium.search.SearchIndex;
 
-import static org.vertexium.util.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 public class DefaultSearchIndex implements SearchIndex {
     @SuppressWarnings("unused")

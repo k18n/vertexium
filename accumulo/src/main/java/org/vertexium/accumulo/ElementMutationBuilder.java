@@ -20,11 +20,11 @@ import org.vertexium.property.StreamingPropertyValue;
 import org.vertexium.property.StreamingPropertyValueRef;
 import org.vertexium.util.ArrayUtils;
 import org.vertexium.util.ExtendedDataMutationUtils;
-import org.vertexium.util.Preconditions;
 
 import java.util.*;
 
 import static org.vertexium.mutation.ElementMutationBase.*;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.vertexium.util.IncreasingTime.currentTimeMillis;
 
 public abstract class ElementMutationBuilder {
@@ -643,8 +643,8 @@ public abstract class ElementMutationBuilder {
     }
 
     public void addPropertyDeleteToMutation(Mutation m, Property property) {
-        Preconditions.checkNotNull(m, "mutation cannot be null");
-        Preconditions.checkNotNull(property, "property cannot be null");
+        checkNotNull(m, "mutation cannot be null");
+        checkNotNull(property, "property cannot be null");
         Text columnQualifier = KeyHelper.getColumnQualifierFromPropertyColumnQualifier(property, getNameSubstitutionStrategy());
         ColumnVisibility columnVisibility = visibilityToAccumuloVisibility(property.getVisibility());
         m.putDelete(AccumuloElement.CF_PROPERTY, columnQualifier, columnVisibility, currentTimeMillis());
@@ -656,8 +656,8 @@ public abstract class ElementMutationBuilder {
     }
 
     public void addPropertySoftDeleteToMutation(Mutation m, Property property, long timestamp, Object data) {
-        Preconditions.checkNotNull(m, "mutation cannot be null");
-        Preconditions.checkNotNull(property, "property cannot be null");
+        checkNotNull(m, "mutation cannot be null");
+        checkNotNull(property, "property cannot be null");
         Text columnQualifier = KeyHelper.getColumnQualifierFromPropertyColumnQualifier(property, getNameSubstitutionStrategy());
         ColumnVisibility columnVisibility = visibilityToAccumuloVisibility(property.getVisibility());
         m.put(AccumuloElement.CF_PROPERTY_SOFT_DELETE, columnQualifier, columnVisibility, timestamp, toSoftDeleteDataToValue(data));

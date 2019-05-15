@@ -55,9 +55,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.vertexium.VertexiumObjectType.getTypeFromElement;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.vertexium.util.IterableUtils.singleOrDefault;
 import static org.vertexium.util.IterableUtils.toList;
-import static org.vertexium.util.Preconditions.checkNotNull;
 import static org.vertexium.util.StreamUtils.stream;
 import static org.vertexium.util.StreamUtils.toIterable;
 
@@ -838,11 +838,11 @@ public class AccumuloGraph extends GraphBase implements Traceable {
                     elementMutationBuilder.saveEdgeMutation(AccumuloGraph.this, this, timestampLong);
 
                     AccumuloEdge edge = AccumuloGraph.this.createEdge(
-                            AccumuloGraph.this,
-                            this,
-                            timestampLong,
-                            FetchHints.ALL_INCLUDING_HIDDEN,
-                            user
+                        AccumuloGraph.this,
+                        this,
+                        timestampLong,
+                        FetchHints.ALL_INCLUDING_HIDDEN,
+                        user
                     );
                     return savePreparedEdge(this, edge, null, user);
                 } finally {
@@ -2157,7 +2157,7 @@ public class AccumuloGraph extends GraphBase implements Traceable {
         String elementRowKey = element.getId();
         Mutation m = new Mutation(elementRowKey);
         while (it.hasNext()) {
-            SetPropertyMetadata apm  = it.next();
+            SetPropertyMetadata apm = it.next();
             Property property = element.getProperty(apm.getPropertyKey(), apm.getPropertyName(), apm.getPropertyVisibility());
             if (property == null) {
                 throw new VertexiumException(String.format("Could not find property %s:%s(%s)", apm.getPropertyKey(), apm.getPropertyName(), apm.getPropertyVisibility()));
@@ -2533,40 +2533,40 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
         ScannerBase scanner = createExtendedDataRowScanner(ranges, user);
         return new DelegatingStream<>(stream(scanner.iterator()))
-                .onClose(() -> {
-                    scanner.close();
-                    if (trace != null) {
-                        trace.stop();
-                    }
-                    GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
-                }).map(rawRow -> {
-                    try {
-                        SortedMap<Key, Value> row = WholeRowIterator.decodeRow(rawRow.getKey(), rawRow.getValue());
-                        ExtendedDataRowId extendedDataRowId = KeyHelper.parseExtendedDataRowId(rawRow.getKey().getRow());
-                        return (ExtendedDataRow) AccumuloExtendedDataRow.create(
-                                extendedDataRowId,
-                                row,
-                                fetchHints,
-                                vertexiumSerializer
-                        );
-                    } catch (IOException e) {
-                        throw new VertexiumException("Could not decode row", e);
-                    }
-                }).filter(row -> {
-                    if (!fetchHints.isIgnoreAdditionalVisibilities()) {
-                        Set<String> additionalVisibilities = row.getAdditionalVisibilities();
-                        if (additionalVisibilities.size() == 0) {
-                            return true;
-                        }
-                        for (String additionalVisibility : additionalVisibilities) {
-                            if (!user.canRead(new Visibility(additionalVisibility))) {
-                                return false;
-                            }
-                        }
+            .onClose(() -> {
+                scanner.close();
+                if (trace != null) {
+                    trace.stop();
+                }
+                GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
+            }).map(rawRow -> {
+                try {
+                    SortedMap<Key, Value> row = WholeRowIterator.decodeRow(rawRow.getKey(), rawRow.getValue());
+                    ExtendedDataRowId extendedDataRowId = KeyHelper.parseExtendedDataRowId(rawRow.getKey().getRow());
+                    return (ExtendedDataRow) AccumuloExtendedDataRow.create(
+                        extendedDataRowId,
+                        row,
+                        fetchHints,
+                        vertexiumSerializer
+                    );
+                } catch (IOException e) {
+                    throw new VertexiumException("Could not decode row", e);
+                }
+            }).filter(row -> {
+                if (!fetchHints.isIgnoreAdditionalVisibilities()) {
+                    Set<String> additionalVisibilities = row.getAdditionalVisibilities();
+                    if (additionalVisibilities.size() == 0) {
                         return true;
                     }
+                    for (String additionalVisibility : additionalVisibilities) {
+                        if (!user.canRead(new Visibility(additionalVisibility))) {
+                            return false;
+                        }
+                    }
                     return true;
-                });
+                }
+                return true;
+            });
     }
 
     private ScannerBase createExtendedDataRowScanner(List<org.apache.accumulo.core.data.Range> ranges, User user) {
@@ -2613,13 +2613,13 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
         ScannerBase scanner = createVertexScanner(fetchHints, SINGLE_VERSION, null, endTime, range, user);
         return new DelegatingStream<>(stream(scanner.iterator()))
-                .onClose(() -> {
-                    scanner.close();
-                    if (trace != null) {
-                        trace.stop();
-                    }
-                    GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
-                }).map(row -> createVertexFromVertexIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
+            .onClose(() -> {
+                scanner.close();
+                if (trace != null) {
+                    trace.stop();
+                }
+                GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
+            }).map(row -> createVertexFromVertexIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
     }
 
     private Vertex createVertexFromVertexIteratorValue(Key key, Value value, FetchHints fetchHints, User user) {
@@ -2649,12 +2649,12 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
         ScannerBase scanner = createVertexScanner(fetchHints, 1, null, endTime, ranges, user);
         return new DelegatingStream<>(StreamUtils.stream(scanner.iterator()))
-                .onClose(() -> {
-                    scanner.close();
-                    trace.stop();
-                    GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
-                })
-                .map(row -> createVertexFromVertexIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
+            .onClose(() -> {
+                scanner.close();
+                trace.stop();
+                GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
+            })
+            .map(row -> createVertexFromVertexIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
     }
 
     @Override
@@ -2676,11 +2676,11 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
         ScannerBase scanner = createEdgeScanner(fetchHints, 1, null, endTime, ranges, user);
         return new DelegatingStream<>(stream(scanner.iterator()))
-                .onClose(() -> {
-                    scanner.close();
-                    trace.stop();
-                    GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
-                }).map(row -> createEdgeFromEdgeIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
+            .onClose(() -> {
+                scanner.close();
+                trace.stop();
+                GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
+            }).map(row -> createEdgeFromEdgeIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
     }
 
     @Override
@@ -2750,13 +2750,13 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
         ScannerBase scanner = createEdgeScanner(fetchHints, SINGLE_VERSION, null, endTime, range, user);
         return new DelegatingStream<>(stream(scanner.iterator()))
-                .onClose(() -> {
-                    scanner.close();
-                    if (trace != null) {
-                        trace.stop();
-                    }
-                    GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
-                }).map(row -> createEdgeFromEdgeIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
+            .onClose(() -> {
+                scanner.close();
+                if (trace != null) {
+                    trace.stop();
+                }
+                GRAPH_LOGGER.logEndIterator(System.currentTimeMillis() - timerStartTime);
+            }).map(row -> createEdgeFromEdgeIteratorValue(row.getKey(), row.getValue(), fetchHints, user));
     }
 
     private long getRowCountFromTable(String tableName, Text signalColumn, User user) {
@@ -2991,6 +2991,17 @@ public class AccumuloGraph extends GraphBase implements Traceable {
             } finally {
                 stampedLock.unlockWrite(stamp);
             }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void deleteAllExtendedDataForElement(Element element, User user) {
+        if (!element.getFetchHints().isIncludeExtendedDataTableNames() || element.getExtendedDataTableNames().size() <= 0) {
+            return;
+        }
+
+        for (ExtendedDataRow row : getExtendedData(ElementType.getTypeFromElement(element), element.getId(), null, user)) {
+            deleteExtendedDataRow(row.getId(), user);
         }
     }
 }
