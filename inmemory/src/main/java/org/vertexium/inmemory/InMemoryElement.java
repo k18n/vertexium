@@ -134,7 +134,8 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
         if (!getFetchHints().isIncludeExtendedDataTableNames()) {
             throw new VertexiumMissingFetchHintException(getFetchHints(), "includeExtendedDataTableNames");
         }
-        return graph.getExtendedDataTableNames(ElementType.getTypeFromElement(this), id, getFetchHints(), user);
+        return graph.getExtendedDataTable()
+            .getTableNames(getElementType(), getId(), getFetchHints(), getUser());
     }
 
     @Override
@@ -143,7 +144,7 @@ public abstract class InMemoryElement<TElement extends InMemoryElement> extends 
             getGraph(),
             this,
             tableName,
-            graph.getExtendedDataTable(ElementType.getTypeFromElement(this), id, tableName, fetchHints, user)
+            graph.getExtendedDataTable().getTable(getElementType(), getId(), tableName, fetchHints, getUser())
         );
     }
 }
