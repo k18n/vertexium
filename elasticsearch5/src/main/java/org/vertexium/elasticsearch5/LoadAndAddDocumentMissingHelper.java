@@ -40,7 +40,7 @@ public class LoadAndAddDocumentMissingHelper implements Elasticsearch5ExceptionH
             default:
                 throw new VertexiumException("Invalid element type: " + flushObject.getElementLocation().getElementType());
         }
-        elasticsearch5SearchIndex.addElement(graph, element, authorizations);
+        elasticsearch5SearchIndex.addElement(graph, element, authorizations.getUser());
     }
 
     protected static void handleExtendedDataRow(

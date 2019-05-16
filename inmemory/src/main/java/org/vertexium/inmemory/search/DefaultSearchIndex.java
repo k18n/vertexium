@@ -1,10 +1,7 @@
 package org.vertexium.inmemory.search;
 
 import org.vertexium.*;
-import org.vertexium.mutation.AdditionalExtendedDataVisibilityAddMutation;
-import org.vertexium.mutation.AdditionalExtendedDataVisibilityDeleteMutation;
-import org.vertexium.mutation.ExistingElementMutation;
-import org.vertexium.mutation.ExtendedDataMutation;
+import org.vertexium.mutation.*;
 import org.vertexium.query.DefaultExtendedDataQuery;
 import org.vertexium.search.SearchIndex;
 
@@ -22,7 +19,7 @@ public class DefaultSearchIndex implements SearchIndex {
     }
 
     @Override
-    public <TElement extends Element> void updateElement(Graph graph, ExistingElementMutation<TElement> mutation, User user) {
+    public <TElement extends Element> void addOrUpdateElement(Graph graph, ElementMutation<TElement> mutation, User user) {
         checkNotNull(mutation, "mutation cannot be null");
     }
 
@@ -72,13 +69,6 @@ public class DefaultSearchIndex implements SearchIndex {
     @Override
     public void deleteProperty(Graph graph, Element element, PropertyDescriptor property, User user) {
         checkNotNull(element, "element cannot be null");
-    }
-
-    @Override
-    public void addElements(Graph graph, Iterable<? extends Element> elements, User user) {
-        for (Element element : elements) {
-            addElement(graph, element, user);
-        }
     }
 
     @Override

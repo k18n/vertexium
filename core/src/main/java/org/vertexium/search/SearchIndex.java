@@ -1,30 +1,15 @@
 package org.vertexium.search;
 
 import org.vertexium.*;
-import org.vertexium.mutation.AdditionalExtendedDataVisibilityAddMutation;
-import org.vertexium.mutation.AdditionalExtendedDataVisibilityDeleteMutation;
-import org.vertexium.mutation.ExistingElementMutation;
-import org.vertexium.mutation.ExtendedDataMutation;
-import org.vertexium.query.*;
+import org.vertexium.mutation.*;
 import org.vertexium.util.FutureDeprecation;
 
 import java.util.Collection;
 
 public interface SearchIndex {
-
-    @FutureDeprecation
-    default void addElement(Graph graph, Element element, Authorizations authorizations) {
-        addElement(graph, element, authorizations.getUser());
-    }
-
     void addElement(Graph graph, Element element, User user);
 
-    @FutureDeprecation
-    default <TElement extends Element> void updateElement(Graph graph, ExistingElementMutation<TElement> mutation, Authorizations authorizations) {
-        updateElement(graph, mutation, authorizations.getUser());
-    }
-
-    <TElement extends Element> void updateElement(Graph graph, ExistingElementMutation<TElement> mutation, User user);
+    <TElement extends Element> void addOrUpdateElement(Graph graph, ElementMutation<TElement> mutation, User user);
 
     @FutureDeprecation
     default void deleteElement(Graph graph, Element element, Authorizations authorizations) {
@@ -80,13 +65,6 @@ public interface SearchIndex {
     }
 
     void deleteProperty(Graph graph, Element element, PropertyDescriptor property, User user);
-
-    @FutureDeprecation
-    default void addElements(Graph graph, Iterable<? extends Element> elements, Authorizations authorizations) {
-        addElements(graph, elements, authorizations.getUser());
-    }
-
-    void addElements(Graph graph, Iterable<? extends Element> elements, User user);
 
     @FutureDeprecation
     org.vertexium.query.GraphQuery queryGraph(Graph graph, String queryString, Authorizations authorizations);
@@ -160,12 +138,12 @@ public interface SearchIndex {
         Authorizations authorizations
     ) {
         addElementExtendedData(
-                graph,
-                elementLocation,
-                extendedDatas,
-                additionalExtendedDataVisibilities,
-                additionalExtendedDataVisibilityDeletes,
-                authorizations.getUser()
+            graph,
+            elementLocation,
+            extendedDatas,
+            additionalExtendedDataVisibilities,
+            additionalExtendedDataVisibilityDeletes,
+            authorizations.getUser()
         );
     }
 
