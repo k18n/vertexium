@@ -532,7 +532,7 @@ public abstract class GraphTestBase {
         clearGraphEvents();
 
         v = graph.getVertex("v1", AUTHORIZATIONS_A_AND_B);
-        vertexAdded = v.prepareMutation()
+        v.prepareMutation()
             .addPropertyValue("key1", "prop1Mutation", "value1Mutation", VISIBILITY_A)
             .save(AUTHORIZATIONS_A_AND_B);
         graph.flush();
@@ -540,7 +540,7 @@ public abstract class GraphTestBase {
         Assert.assertEquals(1, count(v.getProperties("prop1Mutation")));
         assertEquals("value1Mutation", v.getPropertyValues("prop1Mutation").iterator().next());
         assertEvents(
-            new AddPropertyEvent(graph, vertexAdded, vertexAdded.getProperty("prop1Mutation"))
+            new AddPropertyEvent(graph, v, v.getProperty("prop1Mutation"))
         );
     }
 
@@ -670,7 +670,7 @@ public abstract class GraphTestBase {
         Property prop1_propid1b = v.getProperty("propid1b", "prop1");
         v.deleteProperties("prop1", AUTHORIZATIONS_A_AND_B);
         graph.flush();
-        Assert.assertEquals(1, count(v.getProperties()));
+
         v = graph.getVertex("v1", FetchHints.ALL, AUTHORIZATIONS_A);
         Assert.assertEquals(1, count(v.getProperties()));
 
@@ -685,7 +685,7 @@ public abstract class GraphTestBase {
         Property prop2_propid2a = v.getProperty("propid2a", "prop2");
         v.deleteProperty("propid2a", "prop2", AUTHORIZATIONS_A_AND_B);
         graph.flush();
-        Assert.assertEquals(0, count(v.getProperties()));
+
         v = graph.getVertex("v1", AUTHORIZATIONS_A);
         Assert.assertEquals(0, count(v.getProperties()));
 
@@ -716,7 +716,7 @@ public abstract class GraphTestBase {
             .deleteProperties("prop1")
             .save(AUTHORIZATIONS_A_AND_B);
         graph.flush();
-        Assert.assertEquals(1, count(v1.getProperties()));
+
         v1 = graph.getVertex("v1", FetchHints.ALL, AUTHORIZATIONS_A);
         Assert.assertEquals(1, count(v1.getProperties()));
 
@@ -734,7 +734,7 @@ public abstract class GraphTestBase {
             .deleteProperties("propid2a", "prop2")
             .save(AUTHORIZATIONS_A_AND_B);
         graph.flush();
-        Assert.assertEquals(0, count(v1.getProperties()));
+
         v1 = graph.getVertex("v1", AUTHORIZATIONS_A);
         Assert.assertEquals(0, count(v1.getProperties()));
         assertEvents(
@@ -749,7 +749,7 @@ public abstract class GraphTestBase {
             .deleteProperties("key1", "prop1")
             .save(AUTHORIZATIONS_A_AND_B);
         graph.flush();
-        Assert.assertEquals(0, count(e1.getProperties()));
+
         e1 = graph.getEdge("e1", AUTHORIZATIONS_A);
         Assert.assertEquals(0, count(e1.getProperties()));
         assertEvents(
@@ -2107,8 +2107,10 @@ public abstract class GraphTestBase {
         assertEquals(LABEL_LABEL1, e.getLabel());
         Assert.assertEquals(1, count(e.getProperties()));
         assertEquals("valueA", e.getPropertyValues("propA").iterator().next());
+        v1 = graph.getVertex("v1", AUTHORIZATIONS_A.getUser());
         Assert.assertEquals(1, count(v1.getEdges(Direction.OUT, AUTHORIZATIONS_A)));
         Assert.assertEquals(LABEL_LABEL1, IterableUtils.single(v1.getEdgesSummary(AUTHORIZATIONS_A).getOutEdgeLabels()));
+        v2 = graph.getVertex("v2", AUTHORIZATIONS_A.getUser());
         Assert.assertEquals(1, count(v2.getEdges(Direction.IN, AUTHORIZATIONS_A)));
         Assert.assertEquals(LABEL_LABEL1, IterableUtils.single(v2.getEdgesSummary(AUTHORIZATIONS_A).getInEdgeLabels()));
 
@@ -4807,13 +4809,16 @@ public abstract class GraphTestBase {
         v.setProperty("prop1", "value1-1", VISIBILITY_A, AUTHORIZATIONS_ALL);
         graph.flush();
 
+        v = graph.getVertex("v1", AUTHORIZATIONS_ALL.getUser());
+
         ElementMutation<Vertex> m = v.prepareMutation()
             .setProperty("prop1", "value1-2", VISIBILITY_A)
             .setProperty("prop2", "value2-2", VISIBILITY_A);
         Assert.assertEquals(1, count(v.getProperties()));
         assertEquals("value1-1", v.getPropertyValue("prop1"));
 
-        v = m.save(AUTHORIZATIONS_A_AND_B);
+        m.save(AUTHORIZATIONS_A_AND_B);
+        v = graph.getVertex("v1", AUTHORIZATIONS_ALL.getUser());
         Assert.assertEquals(2, count(v.getProperties()));
         assertEquals("value1-2", v.getPropertyValue("prop1"));
         assertEquals("value2-2", v.getPropertyValue("prop2"));
@@ -4855,11 +4860,9 @@ public abstract class GraphTestBase {
         Edge ev2v3 = graph.addEdge("e v2->v3", v2, v3, LABEL_LABEL1, VISIBILITY_A, AUTHORIZATIONS_A);
         Edge ev3v1 = graph.addEdge("e v3->v1", v3, v1, LABEL_LABEL1, VISIBILITY_A, AUTHORIZATIONS_A);
         graph.addEdge("e v3->v4", v3, v4, LABEL_LABEL1, VISIBILITY_A, AUTHORIZATIONS_A);
+        graph.flush();
 
-        List<Vertex> vertices = new ArrayList<>();
-        vertices.add(v1);
-        vertices.add(v2);
-        vertices.add(v3);
+        List<Vertex> vertices = graph.getVertices(Arrays.asList("v1", "v2", "v3"), AUTHORIZATIONS_A.getUser()).collect(Collectors.toList());
         Iterable<String> edgeIds = toList(graph.findRelatedEdgeIdsForVertices(vertices, AUTHORIZATIONS_A));
         Assert.assertEquals(4, count(edgeIds));
         org.vertexium.test.util.IterableUtils.assertContains(ev1v2.getId(), edgeIds);
