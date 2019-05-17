@@ -625,9 +625,9 @@ public class Elasticsearch5SearchIndex implements SearchIndex {
             indexService,
             propertyNameService,
             propertyNameVisibilitiesStore,
+            queryString,
             element.getId(),
             tableName,
-            queryString,
             new ElasticsearchSearchExtendedDataQuery.Options()
                 .setIndexSelectionStrategy(getIndexSelectionStrategy())
                 .setPageSize(getConfig().getQueryPageSize())
