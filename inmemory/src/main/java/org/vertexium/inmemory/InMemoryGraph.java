@@ -2,7 +2,6 @@ package org.vertexium.inmemory;
 
 import com.google.common.collect.Sets;
 import org.vertexium.*;
-import org.vertexium.event.GraphEvent;
 import org.vertexium.id.IdGenerator;
 import org.vertexium.inmemory.mutations.EdgeSetupMutation;
 import org.vertexium.property.StreamingPropertyValue;
@@ -85,12 +84,7 @@ public class InMemoryGraph extends GraphBase {
             this,
             this.vertices,
             this.edges,
-            this.extendedDataTable,
-            (GraphEvent event) -> {
-                if (hasEventListeners()) {
-                    fireGraphEvent(event);
-                }
-            }
+            this.extendedDataTable
         );
     }
 

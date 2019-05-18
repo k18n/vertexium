@@ -3,7 +3,6 @@ package org.vertexium.test.util;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import org.vertexium.*;
-import org.vertexium.event.GraphEvent;
 import org.vertexium.query.IterableWithTotalHits;
 import org.vertexium.query.QueryResultsIterable;
 
@@ -16,8 +15,6 @@ import static org.vertexium.util.IterableUtils.toList;
 import static org.vertexium.util.StreamUtils.stream;
 
 public class VertexiumAssert {
-    protected final static List<GraphEvent> graphEvents = new ArrayList<>();
-
     public static void assertIdsAnyOrder(Iterable<String> ids, String... expectedIds) {
         List<String> sortedIds = stream(ids).sorted().collect(Collectors.toList());
         Arrays.sort(expectedIds);
@@ -49,14 +46,6 @@ public class VertexiumAssert {
         ArrayList<String> idsList = Lists.newArrayList(ids);
         Collections.sort(idsList);
         return Joiner.on(", ").join(idsList);
-    }
-
-    public static void assertEvents(GraphEvent... expectedEvents) {
-        assertEquals("Different number of events occurred than were asserted", expectedEvents.length, graphEvents.size());
-
-        for (int i = 0; i < expectedEvents.length; i++) {
-            assertEquals(expectedEvents[i], graphEvents.get(i));
-        }
     }
 
     public static void assertEdgeIdsAnyOrder(Iterable<Edge> edges, String... expectedIds) {
@@ -113,14 +102,6 @@ public class VertexiumAssert {
         } catch (NoSuchElementException ex) {
             // OK
         }
-    }
-
-    public static void addGraphEvent(GraphEvent graphEvent) {
-        graphEvents.add(graphEvent);
-    }
-
-    public static void clearGraphEvents() {
-        graphEvents.clear();
     }
 
     public static <T> void assertSet(Set<T> set, T... values) {

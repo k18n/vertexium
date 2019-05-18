@@ -2,7 +2,6 @@ package org.vertexium;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import org.vertexium.event.GraphEventListener;
 import org.vertexium.historicalEvent.HistoricalEvent;
 import org.vertexium.historicalEvent.HistoricalEventId;
 import org.vertexium.id.IdGenerator;
@@ -1956,11 +1955,6 @@ public interface Graph {
     default SearchIndexSecurityGranularity getSearchIndexSecurityGranularity() {
         return getSearchIndex().getSearchIndexSecurityGranularity();
     }
-
-    /**
-     * Adds a graph event listener that will be called when graph events occur.
-     */
-    void addGraphEventListener(GraphEventListener graphEventListener);
 
     /**
      * Marks a vertex as hidden for a given visibility.

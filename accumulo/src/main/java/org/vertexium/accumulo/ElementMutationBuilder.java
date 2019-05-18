@@ -14,7 +14,6 @@ import org.vertexium.*;
 import org.vertexium.accumulo.iterator.model.EdgeInfo;
 import org.vertexium.accumulo.keys.KeyHelper;
 import org.vertexium.accumulo.util.StreamingPropertyValueStorageStrategy;
-import org.vertexium.event.*;
 import org.vertexium.id.NameSubstitutionStrategy;
 import org.vertexium.mutation.*;
 import org.vertexium.property.StreamingPropertyValue;
@@ -127,8 +126,6 @@ public abstract class ElementMutationBuilder {
         }
 
         // TODO: In all of the above cases where we delete/modify edges, it would be more efficient to collect all of the vertex mutations and submit them as a batch
-
-        queueEvents(vertex, vertexBuilder);
     }
 
     private Vertex getVertexFromMutation(ElementMutation<Vertex> vertexBuilder, User user) {
@@ -552,8 +549,6 @@ public abstract class ElementMutationBuilder {
         }
         saveVertexMutations(outMutation, inMutation);
         saveExtendedDataMutations(edgeBuilder, user);
-
-        queueEvents(edge, edgeBuilder);
     }
 
     @SuppressWarnings("unchecked")
@@ -966,138 +961,5 @@ public abstract class ElementMutationBuilder {
         Mutation m = new Mutation(in.getId());
         m.put(AccumuloVertex.CF_IN_EDGE_HIDDEN, new Text(edge.getId()), columnVisibility, toHiddenDeletedValue(data));
         return m;
-    }
-
-    private void queueEvents(
-        Supplier<? extends Element> element,
-        ElementMutation<? extends Element> mutation
-    ) {
-        if (!(mutation instanceof ExistingElementMutation)) {
-            if (element.get() instanceof Edge) {
-                graph.queueEvent(new AddEdgeEvent(graph, (Edge) element.get()));
-            } else if (element.get() instanceof Vertex) {
-                graph.queueEvent(new AddVertexEvent(graph, (Vertex) element.get()));
-            } else {
-                throw new VertexiumException("Unexpected element type: " + element.get());
-            }
-        }
-
-        mutation.getProperties().forEach(property ->
-            graph.queueEvent(new AddPropertyEvent(graph, element.get(), property))
-        );
-        mutation.getPropertyDeletes().forEach(propertyDeleteMutation ->
-            graph.queueEvent(new DeletePropertyEvent(graph, element.get(), propertyDeleteMutation))
-        );
-        mutation.getPropertySoftDeletes().forEach(propertySoftDeleteMutation ->
-            graph.queueEvent(new SoftDeletePropertyEvent(graph, element.get(), propertySoftDeleteMutation))
-        );
-        mutation.getAdditionalVisibilities().forEach(additionalVisibilityAddMutation ->
-            graph.queueEvent(new AddAdditionalVisibilityEvent(graph, element.get(), additionalVisibilityAddMutation))
-        );
-        mutation.getAdditionalVisibilityDeletes().forEach(additionalVisibilityDeleteMutation ->
-            graph.queueEvent(new DeleteAdditionalVisibilityEvent(graph, element.get(), additionalVisibilityDeleteMutation))
-        );
-        mutation.getExtendedData().forEach(extendedDataMutation ->
-            graph.queueEvent(new AddExtendedDataEvent(
-                graph,
-                element.get(),
-                extendedDataMutation.getTableName(),
-                extendedDataMutation.getRow(),
-                extendedDataMutation.getColumnName(),
-                extendedDataMutation.getKey(),
-                extendedDataMutation.getValue(),
-                extendedDataMutation.getVisibility()
-            ))
-        );
-        mutation.getExtendedDataDeletes().forEach(extendedDataDeleteMutation ->
-            graph.queueEvent(new DeleteExtendedDataEvent(
-                graph,
-                element.get(),
-                extendedDataDeleteMutation.getTableName(),
-                extendedDataDeleteMutation.getRow(),
-                extendedDataDeleteMutation.getColumnName(),
-                extendedDataDeleteMutation.getKey()
-            ))
-        );
-        mutation.getAdditionalExtendedDataVisibilities().forEach(additionalExtendedDataVisibility ->
-            graph.queueEvent(new AddAdditionalExtendedDataVisibilityEvent(
-                graph,
-                element.get(),
-                additionalExtendedDataVisibility.getTableName(),
-                additionalExtendedDataVisibility.getRow(),
-                additionalExtendedDataVisibility.getAdditionalVisibility()
-            ))
-        );
-        mutation.getAdditionalExtendedDataVisibilityDeletes().forEach(additionalExtendedDataVisibilityDelete ->
-            graph.queueEvent(new DeleteAdditionalExtendedDataVisibilityEvent(
-                graph,
-                element.get(),
-                additionalExtendedDataVisibilityDelete.getTableName(),
-                additionalExtendedDataVisibilityDelete.getRow(),
-                additionalExtendedDataVisibilityDelete.getAdditionalVisibility()
-            ))
-        );
-        mutation.getMarkPropertyHiddenData().forEach(markPropertyHiddenData ->
-            graph.queueEvent(new MarkHiddenPropertyEvent(
-                graph,
-                element.get(),
-                markPropertyHiddenData.getKey(),
-                markPropertyHiddenData.getName(),
-                markPropertyHiddenData.getPropertyVisibility(),
-                markPropertyHiddenData.getTimestamp(),
-                markPropertyHiddenData.getVisibility(),
-                markPropertyHiddenData.getEventData()
-            ))
-        );
-        mutation.getMarkPropertyVisibleData().forEach(markPropertyVisibleData ->
-            graph.queueEvent(new MarkVisiblePropertyEvent(
-                graph,
-                element.get(),
-                markPropertyVisibleData.getKey(),
-                markPropertyVisibleData.getName(),
-                markPropertyVisibleData.getPropertyVisibility(),
-                markPropertyVisibleData.getTimestamp(),
-                markPropertyVisibleData.getVisibility(),
-                markPropertyVisibleData.getEventData()
-            ))
-        );
-        mutation.getMarkHiddenData().forEach(markHiddenData -> {
-            if (element.get() instanceof Edge) {
-                graph.queueEvent(new MarkHiddenEdgeEvent(graph, (Edge) element.get(), markHiddenData.getEventData()));
-            } else if (element.get() instanceof Vertex) {
-                graph.queueEvent(new MarkHiddenVertexEvent(graph, (Vertex) element.get(), markHiddenData.getEventData()));
-            } else {
-                throw new VertexiumException("Unexpected element type: " + element.get());
-            }
-        });
-        mutation.getMarkVisibleData().forEach(markVisibleData -> {
-            if (element.get() instanceof Edge) {
-                graph.queueEvent(new MarkVisibleEdgeEvent(graph, (Edge) element.get(), markVisibleData.getEventData()));
-            } else if (element.get() instanceof Vertex) {
-                graph.queueEvent(new MarkVisibleVertexEvent(graph, (Vertex) element.get(), markVisibleData.getEventData()));
-            } else {
-                throw new VertexiumException("Unexpected element type: " + element.get());
-            }
-        });
-
-        if (mutation.getSoftDeleteData() != null) {
-            if (element.get() instanceof Edge) {
-                graph.queueEvent(new SoftDeleteEdgeEvent(graph, (Edge) element.get(), mutation.getSoftDeleteData().getEventData()));
-            } else if (element.get() instanceof Vertex) {
-                graph.queueEvent(new SoftDeleteVertexEvent(graph, (Vertex) element.get(), mutation.getSoftDeleteData().getEventData()));
-            } else {
-                throw new VertexiumException("Unexpected element type: " + element.get());
-            }
-        }
-
-        if (mutation.isDeleteElement()) {
-            if (element.get() instanceof Edge) {
-                graph.queueEvent(new DeleteEdgeEvent(graph, (Edge) element.get()));
-            } else if (element.get() instanceof Vertex) {
-                graph.queueEvent(new DeleteVertexEvent(graph, (Vertex) element.get()));
-            } else {
-                throw new VertexiumException("Unexpected element type: " + element.get());
-            }
-        }
     }
 }

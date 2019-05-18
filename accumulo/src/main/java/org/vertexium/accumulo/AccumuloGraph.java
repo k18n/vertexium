@@ -33,7 +33,6 @@ import org.vertexium.accumulo.iterator.util.ByteArrayWrapper;
 import org.vertexium.accumulo.iterator.util.ByteSequenceUtils;
 import org.vertexium.accumulo.keys.KeyHelper;
 import org.vertexium.accumulo.util.*;
-import org.vertexium.event.GraphEvent;
 import org.vertexium.historicalEvent.HistoricalEvent;
 import org.vertexium.historicalEvent.HistoricalEventId;
 import org.vertexium.mutation.AlterPropertyVisibility;
@@ -84,7 +83,6 @@ public class AccumuloGraph extends GraphBase implements Traceable {
     private final StreamingPropertyValueStorageStrategy streamingPropertyValueStorageStrategy;
     private final MultiTableBatchWriter batchWriter;
     protected final ElementMutationBuilder elementMutationBuilder;
-    private final Queue<GraphEvent> graphEventQueue = new LinkedList<>();
     private Integer accumuloGraphVersion;
     private boolean foundVertexiumSerializerMetadata;
     private boolean foundStreamingPropertyValueStorageStrategyMetadata;
@@ -335,12 +333,6 @@ public class AccumuloGraph extends GraphBase implements Traceable {
                 return (AccumuloVertex) AccumuloGraph.this.getVertex(getId(), user);
             }
         };
-    }
-
-    void queueEvent(GraphEvent graphEvent) {
-        synchronized (this.graphEventQueue) {
-            this.graphEventQueue.add(graphEvent);
-        }
     }
 
     protected void addMutations(Element element, Mutation... mutations) {
@@ -662,26 +654,12 @@ public class AccumuloGraph extends GraphBase implements Traceable {
 
     @Override
     public void flush() {
-        if (hasEventListeners()) {
-            synchronized (this.graphEventQueue) {
-                flushWritersAndSuper();
-                flushGraphEventQueue();
-            }
-        } else {
-            flushWritersAndSuper();
-        }
+        flushWritersAndSuper();
     }
 
     private void flushWritersAndSuper() {
         flushWriter(this.batchWriter);
         super.flush();
-    }
-
-    private void flushGraphEventQueue() {
-        GraphEvent graphEvent;
-        while ((graphEvent = this.graphEventQueue.poll()) != null) {
-            fireGraphEvent(graphEvent);
-        }
     }
 
     private static void flushWriter(MultiTableBatchWriter writer) {

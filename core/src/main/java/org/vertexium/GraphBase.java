@@ -1,7 +1,5 @@
 package org.vertexium;
 
-import org.vertexium.event.GraphEvent;
-import org.vertexium.event.GraphEventListener;
 import org.vertexium.id.IdGenerator;
 import org.vertexium.property.StreamingPropertyValue;
 import org.vertexium.property.StreamingPropertyValueRef;
@@ -9,9 +7,7 @@ import org.vertexium.search.SearchIndex;
 import org.vertexium.util.VertexiumLogger;
 import org.vertexium.util.VertexiumLoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,7 +16,6 @@ public abstract class GraphBase implements Graph, GraphWithSearchIndex {
     private static final VertexiumLogger LOGGER = VertexiumLoggerFactory.getLogger(GraphBase.class);
     protected static final VertexiumLogger QUERY_LOGGER = VertexiumLoggerFactory.getQueryLogger(Graph.class);
     public static final String METADATA_DEFINE_PROPERTY_PREFIX = "defineProperty.";
-    private final List<GraphEventListener> graphEventListeners = new ArrayList<>();
     private Map<String, PropertyDefinition> propertyDefinitionCache = new ConcurrentHashMap<>();
     private final boolean strictTyping;
     public static final String METADATA_ID_GENERATOR_CLASSNAME = "idGenerator.classname";
@@ -103,21 +98,6 @@ public abstract class GraphBase implements Graph, GraphWithSearchIndex {
     @Override
     public final Iterable<GraphMetadataEntry> getMetadataWithPrefix(String prefix) {
         return getGraphMetadataStore().getMetadataWithPrefix(prefix);
-    }
-
-    @Override
-    public void addGraphEventListener(GraphEventListener graphEventListener) {
-        this.graphEventListeners.add(graphEventListener);
-    }
-
-    protected boolean hasEventListeners() {
-        return this.graphEventListeners.size() > 0;
-    }
-
-    protected void fireGraphEvent(GraphEvent graphEvent) {
-        for (GraphEventListener graphEventListener : this.graphEventListeners) {
-            graphEventListener.onGraphEvent(graphEvent);
-        }
     }
 
     protected void addToPropertyDefinitionCache(PropertyDefinition propertyDefinition) {
